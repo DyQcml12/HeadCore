@@ -234,4 +234,4 @@ cmd /c "启动控制中心.bat --check-only"
   - GitHub 上传准备：移除旧远程 origin/upstream（原 DyQcml12/HutaoChatCore.git）；本地提交 3 个清理提交；导出 code-only 仓库到 `..\HutaoChatCore-code-only` 并完成初始化提交；导出仓库在干净环境实测 `810 passed, 6 skipped` 全绿，服务启动冒烟测试全部 200。
   - 测试环境守卫：desk/workbench 浏览器测试在无 Playwright 时自动跳过；modelscope 路径与 ASR 样本测试在资产缺失时自动跳过；voice_chat gpt_sovits 用例改为 monkeypatch 参考库；`planner.load_reference_library` 在注释文件缺失时抛出带安装指引的错误。
 - 验证：`compileall` PASS；全量 `814 passed, 2 skipped`；控制中心页面测试、部署文件测试、来源清单测试全部通过。
-- 未执行：未向 GitHub 实际 push（等用户提供/确认目标仓库后按 README 流程执行）；未删除任何大件本地资产（`external/`、`data/models/`、`data/hutao_voice/`、`data/stickers/` 等按用户要求保留不动）；未执行真实外部服务验收。
+- GitHub 已推送：新仓库 https://github.com/DyQcml12/HeadCore（公开，code-only，586 个文件，无模型/密钥/日志）；本机 git 配置了 schannel SSL 后端解决证书链问题。旧仓库（含模型历史）仍只保留在本机，绝不 push。未删除任何大件本地资产（`external/`、`data/models/`、`data/hutao_voice/`、`data/stickers/` 等按用户要求保留不动）；未执行真实外部服务验收。
