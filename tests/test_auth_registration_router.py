@@ -126,3 +126,33 @@ def test_registration_returns_429_after_rate_limit_is_exhausted() -> None:
 
     assert response.status_code == 429
     assert response.json()["detail"] == "try again later"
+
+
+def test_verify_email_returns_429_after_global_attempt_limit_is_exhausted() -> None:
+    from app.auth.rate_limit import InMemoryRateLimitRepository
+
+    app = FastAPI()
+    limiter = AuthRateLimitService(
+        InMemoryRateLimitRepository(),
+        limit=2,
+        window=timedelta(minutes=10),
+        block_duration=timedelta(minutes=30),
+    )
+    app.include_router(
+        create_registration_router(
+            RegistrationService(RegistrationRepository()),
+            RecordingDelivery(),
+            verify_rate_limiter=limiter,
+        )
+    )
+
+    for _ in range(2):
+        response = asyncio.run(
+            request(app, "POST", "/api/v1/auth/verify-email", json={"token": "000000"})
+        )
+        assert response.status_code == 400
+
+    blocked = asyncio.run(
+        request(app, "POST", "/api/v1/auth/verify-email", json={"token": "000000"})
+    )
+    assert blocked.status_code == 429

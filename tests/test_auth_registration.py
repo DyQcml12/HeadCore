@@ -7,6 +7,21 @@ from app.auth.registration import RegistrationError, RegistrationService, Pendin
 from app.auth.sessions import hash_opaque_token
 
 
+def test_register_surfaces_password_policy_reason() -> None:
+    repository = FakeRegistrationRepository()
+    service = RegistrationService(repository)
+
+    with pytest.raises(RegistrationError, match="至少需要 12 个字符"):
+        asyncio.run(
+            service.register(
+                email="short@example.test",
+                display_name="Short",
+                password="Aa147258@",
+            )
+        )
+    assert repository.created is None
+
+
 class FakeRegistrationRepository:
     def __init__(self) -> None:
         self.created: dict[str, object] | None = None
@@ -45,6 +60,7 @@ def test_registration_persists_only_a_hash_of_the_email_verification_token() -> 
 
     assert result.email_normalized == "reader@example.com"
     assert repository.created is not None
+    assert result.verification_token.isdigit() and len(result.verification_token) == 6
     assert result.verification_token not in str(repository.created)
     assert repository.created["verification_token_hash"] == hash_opaque_token(
         result.verification_token

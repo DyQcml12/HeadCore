@@ -1,4 +1,4 @@
-﻿# Secrets and deployment-local configuration
+# Secrets and deployment-local configuration
 .env
 .env.*
 !.env.example
@@ -24,6 +24,8 @@ data/world/*
 !data/head_planning_multi_reviewer_annotations.json
 !data/head_planning_pairwise_preferences.json
 !data/head_planning_scenarios.json
+!data/world_model_counterfactual_scenarios.json
+!data/world_model_evaluation_cases.json
 !data/persona_*.json
 # Large local-only resources
 data/models/

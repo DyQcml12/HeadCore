@@ -68,6 +68,7 @@ def test_password_reset_persists_only_a_token_hash_and_revokes_sessions() -> Non
 
     assert delivery.sent[0][0] == "reader@example.com"
     raw_token = delivery.sent[0][1]
+    assert raw_token.isdigit() and len(raw_token) == 6
     assert repository.issued_token_hash == hash_opaque_token(raw_token)
     assert repository.issued_token_hash != raw_token
 

@@ -19,9 +19,9 @@ HutaoChatCore 不是“把用户消息转发给大语言模型”的简单壳。
 
 当前阶段是“本地 Web 主线可运行”，**不是可直接开放注册的生产系统**。
 
-- **本地可运行**：`/desk` 文字与“按住说话”流式聊天、对话脉络、记忆读取/删除、登录注册与个人中心页面（服务开关关闭时页面降级为预览）、本地控制中心、PWA 壳、OpenAI 兼容接口、文件语音转写。
-- **条件可用（默认关闭）**：公开账号与 SMTP 邮件验证、网页 TTS、本地视觉工作台、Database V2（MySQL）、语义记忆（Qdrant + 嵌入模型）、世界证据工具（高德、和风天气、受控新闻/政策来源）。
-- **尚未完成**：真实 MySQL/SMTP 联调、域名与 HTTPS、反向代理白名单、共享限流、备份与恢复演练、真实语音与视觉设备验收。
+- **本地可运行**：`/desk` 文字与“按住说话”流式聊天、对话脉络、记忆读取/删除、登录注册与个人中心页面（服务开关关闭时页面降级为预览）、本地控制中心、PWA 壳、OpenAI 兼容接口、文件语音转写、跨会话自我档案与自我一致性门禁（内部机制，档案不存在时不改变任何行为）。
+- **条件可用（默认关闭）**：公开账号与 SMTP 邮件验证（2026-08-15 已用本地调试 SMTP + MySQL V2（账号/档案）+ PostgreSQL（聊天记忆）双轨真实联调通过，真实邮箱按 SMTP_* 配置即可替换；本地调试 SMTP 由 `scripts/dev_smtp_sink.py` 提供，启动器自动拉起，邮件落 `logs/dev-smtp-inbox/`）、网页 TTS（2026-08-15 已用本机 GPT-SoVITS（胡桃权重，CUDA）真实联调通过：聊天回复经 planner 按情绪选参考分段合成，`/api/v1/voice/synthesize` 返回 mp3；使用前提是 GPT-SoVITS API 在 9880 运行 + `PUBLIC_WEB_TTS_ENABLED=true`）、本地视觉工作台、Database V2（MySQL）、语义记忆（Qdrant + 嵌入模型）、世界证据工具（高德地图与高德天气、受控新闻/政策来源（和风天气适配器保留为备选）；自动摄取覆盖天气/新闻/政策/路线四类，只写白名单字段；世界模型带时间衰减与信念强度，旧证据自动降权；非流式对话支持受限单步工具循环，模型可请求一次实时证据后再作答）。
+- **尚未完成**：真实邮箱 SMTP 联调、域名与 HTTPS、反向代理白名单、共享限流、备份与恢复演练、真实语音与视觉设备验收。
 - **已退役**：见“12. 已退役模块”。
 
 状态用语统一为：已实现 / 条件可用 / 部分实现 / 规划中 / 已退役。自动化测试通过**不等于**真实 DeepSeek、MySQL、SMTP、语音模型、视觉设备或世界数据源已经线上验收；只有手册中明确写“真实联调通过”的记录才可作为真实验收证据。
@@ -196,7 +196,8 @@ TTS 说明：网页语音播放默认关闭。GPT-SoVITS 程序、经授权验�
 | 分组 | 关键键 | 说明 |
 | --- | --- | --- |
 | 核心模型 | `MODEL_PROVIDER`、`MODEL_NAME`、`MODEL_BASE_URL`、`DEEPSEEK_API_KEY`、`API_TEMPERATURE`、`API_TIMEOUT_SECONDS` | 文本 Provider；Key 只放 `.env` |
-| Provider 路由 | `TEXT_PROVIDER_ORDER`、`TEXT_PROVIDER_RETRIES`、`TEXT_PROVIDER_CIRCUIT_*`、`ASR_PROVIDER_*` | 有序回退、重试与熔断参数 |
+| 上下文窗口 | `RECENT_CONTEXT_MAX_MESSAGES`、`RECENT_CONTEXT_MAX_CHARS` | 最近对话注入窗口（默认 8 条 / 每条约 80 字） |
+| Provider 路由 | `TEXT_PROVIDER_ORDER`、`TEXT_PROVIDER_RETRIES`、`TEXT_PROVIDER_CIRCUIT_*`、`TEXT_STREAM_TTFT_TIMEOUT_SECONDS`、`TEXT_STREAM_TOTAL_BUDGET_SECONDS`、`ASR_PROVIDER_*` | 有序回退、重试、熔断与流式延迟预算参数 |
 | 存储与数据库 | `STORAGE_BACKEND`、`JSONL_STORAGE_DIR`、`MYSQL_*`、`DATABASE_V2_ENABLED`、`POSTGRES_*` | JSONL 为默认；V2 默认关闭 |
 | 人格 | `PERSONA_PROFILE=hutao_v1` | 唯一内置人格；旧人格名回退到 `hutao_v1` |
 | 公开账号 | `PUBLIC_WEB_AUTH_ENABLED`、`SESSION_COOKIE_SECURE`、`PUBLIC_WEB_SESSION_LIFETIME_SECONDS` | 需 Database V2 + MySQL 就绪后开启 |
@@ -274,6 +275,7 @@ node --test miniprogram/tests/api-client.test.js miniprogram/tests/session.test.
 - `Dockerfile`：Python 3.11 slim，安装 ffmpeg 与 libsndfile1，以非 root 用户 `hutao` 运行 Core。镜像不含 `external/` 与模型权重。
 - `deploy/compose.staging.yml`：MySQL 8.4 + Core（仅绑定主机 `127.0.0.1:8000`，MySQL 不映射公网端口），另含 `database-v2` 迁移 profile 与 `semantic-memory`（Qdrant + 同步 worker）profile。详见 `deploy/README.md`。
 - Database V2 迁移不随启动自动执行：先备份，再按编号顺序应用 `migrations/v2/001` 至 `005`（可经 `scripts/apply_database_v2_migrations.py`）；`006_semantic_memory_outbox.sql` 仅在启用语义记忆时应用。通过 readiness 检查后才启用 `DATABASE_V2_ENABLED`。
+- 运维脚本：`scripts/auth_expiry_cleanup.py`（清理过期会话/验证码/重置码/限流计数，默认 dry-run，`--apply` 才删除）；`scripts/run_self_reflection.py --user-id <id>`（脱机自我档案反思，规则版）；`scripts/evaluate_world_model_counterfactuals.py`（反事实推演离线评估）；`scripts/evaluate_world_model.py`（世界模型固定评测集，12 例四类，输出通过率与 margin，附诚实声明）。建议定期手动或定时执行。
 - 生产前必须补齐：域名/HTTPS、反向代理白名单、上传大小与速率限制、备份与恢复演练、监控告警。
 
 ## 11. 安全与默认关闭边界
@@ -352,9 +354,9 @@ HutaoChatCore is not a thin shell that forwards user messages to an LLM. It adds
 
 The current stage is "local web mainline runnable", **not** a production system open for public registration.
 
-- **Runnable locally**: `/desk` text and push-to-talk streaming chat, dialogue context, memory list/delete, login/registration and profile pages (they degrade to preview when services are off), the local control center, the PWA shell, the OpenAI-Compatible endpoint, and file speech transcription.
-- **Conditionally available (off by default)**: public accounts with SMTP email verification, web TTS, the local visual workbench, Database V2 (MySQL), semantic memory (Qdrant + embedding model), and world evidence tools (Amap, QWeather, gated news/policy sources).
-- **Not finished yet**: real MySQL/SMTP integration, domain + HTTPS, reverse-proxy allowlists, shared rate limiting, backup/restore drills, and real voice/vision hardware acceptance.
+- **Runnable locally**: `/desk` text and push-to-talk streaming chat, dialogue context, memory list/delete, login/registration and profile pages (they degrade to preview when services are off), the local control center, the PWA shell, the OpenAI-Compatible endpoint, file speech transcription, and the cross-session self profile with its consistency gate (internal mechanisms that change nothing while no profile exists).
+- **Conditionally available (off by default)**: public accounts with SMTP email verification (on 2026-08-15 the full chain was integration-tested against a local debug SMTP sink with the MySQL V2 (accounts/profiles) + PostgreSQL (chat memories) dual-track; swap in a real mailbox via the SMTP_* settings; the local sink is `scripts/dev_smtp_sink.py`, auto-started by the launcher, with mail stored under `logs/dev-smtp-inbox/`), web TTS (on 2026-08-15 the full chain was integration-tested against the local GPT-SoVITS Hu Tao weights on CUDA: chat replies are planned per-emotion into reference-audio segments and `/api/v1/voice/synthesize` returns mp3; it requires the GPT-SoVITS API on 9880 plus `PUBLIC_WEB_TTS_ENABLED=true`), the local visual workbench, Database V2 (MySQL), semantic memory (Qdrant + embedding model), and world evidence tools (Amap maps and Amap weather, gated news/policy sources, with the QWeather adapter kept as a fallback; automatic ingestion now covers weather/news/policy/routes with whitelisted fields only; the world model applies time decay and belief strength so old evidence is downweighted automatically; non-streaming chat supports a restricted single-step tool loop where the model may request one round of live evidence before answering).
+- **Not finished yet**: real-mailbox SMTP integration, domain + HTTPS, reverse-proxy allowlists, shared rate limiting, backup/restore drills, and real voice/vision hardware acceptance.
 - **Retired**: see "12. Retired Modules".
 
 Status vocabulary: implemented / conditionally available / partially implemented / planned / retired. Passing automated tests does **not** mean real DeepSeek, MySQL, SMTP, speech, vision, or world sources have been accepted online; only "real integration passed" records in the manual count as real acceptance evidence.
@@ -529,7 +531,8 @@ Full layout rules: `docs/deployment/LOCAL_MODEL_LAYOUT.md` and `docs/LOCAL_MODEL
 | Group | Key keys | Notes |
 | --- | --- | --- |
 | Core model | `MODEL_PROVIDER`, `MODEL_NAME`, `MODEL_BASE_URL`, `DEEPSEEK_API_KEY`, `API_TEMPERATURE`, `API_TIMEOUT_SECONDS` | Text provider; keys only in `.env` |
-| Provider routing | `TEXT_PROVIDER_ORDER`, `TEXT_PROVIDER_RETRIES`, `TEXT_PROVIDER_CIRCUIT_*`, `ASR_PROVIDER_*` | Ordered fallback, retry, circuit breaker parameters |
+| Context window | `RECENT_CONTEXT_MAX_MESSAGES`, `RECENT_CONTEXT_MAX_CHARS` | Recent-dialogue injection window (default 8 messages / ~80 chars each) |
+| Provider routing | `TEXT_PROVIDER_ORDER`, `TEXT_PROVIDER_RETRIES`, `TEXT_PROVIDER_CIRCUIT_*`, `TEXT_STREAM_TTFT_TIMEOUT_SECONDS`, `TEXT_STREAM_TOTAL_BUDGET_SECONDS`, `ASR_PROVIDER_*` | Ordered fallback, retry, circuit breaker, and stream latency-budget parameters |
 | Storage and database | `STORAGE_BACKEND`, `JSONL_STORAGE_DIR`, `MYSQL_*`, `DATABASE_V2_ENABLED`, `POSTGRES_*` | JSONL is default; V2 is off by default |
 | Persona | `PERSONA_PROFILE=hutao_v1` | The only built-in persona; legacy names fall back to `hutao_v1` |
 | Public accounts | `PUBLIC_WEB_AUTH_ENABLED`, `SESSION_COOKIE_SECURE`, `PUBLIC_WEB_SESSION_LIFETIME_SECONDS` | Enable only after Database V2 + MySQL are ready |
@@ -607,6 +610,7 @@ The latest recorded run (after the 2026-08 cleanup) is `814 passed, 2 skipped`, 
 - `Dockerfile`: Python 3.11 slim, installs ffmpeg and libsndfile1, runs Core as the non-root `hutao` user. The image contains no `external/` and no model weights.
 - `deploy/compose.staging.yml`: MySQL 8.4 + Core (Core binds host `127.0.0.1:8000` only; MySQL publishes no public port), plus a `database-v2` migration profile and a `semantic-memory` (Qdrant + sync worker) profile. See `deploy/README.md`.
 - Database V2 migrations never run automatically at startup: back up first, apply `migrations/v2/001` through `005` in order (e.g., via `scripts/apply_database_v2_migrations.py`); apply `006_semantic_memory_outbox.sql` only when semantic memory is enabled. Pass the readiness check, then enable `DATABASE_V2_ENABLED`.
+- Operations scripts: `scripts/auth_expiry_cleanup.py` (purge expired sessions/verification/reset codes and rate-limit counters; dry-run by default, `--apply` deletes); `scripts/run_self_reflection.py --user-id <id>` (offline rule-based self-profile reflection); `scripts/evaluate_world_model_counterfactuals.py` (offline counterfactual-trial evaluation); `scripts/evaluate_world_model.py` (fixed world-model evaluation set, 12 cases across four categories, with pass rate, margin, and an honesty disclaimer). Run them manually or on a schedule.
 - Required before production: domain/HTTPS, reverse-proxy allowlists, upload size and rate limits, backup/restore drills, and monitoring/alerting.
 
 ## 11. Security and Fail-Closed Defaults

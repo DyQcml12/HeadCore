@@ -338,7 +338,7 @@ def test_brain_coordinator_calls_tools_only_for_explicit_ready_requests() -> Non
         assert city.status == "ready"
         assert runtime.district_calls == ["广州"]
         assert runtime.weather_calls[0] == "440100"
-        assert runtime.weather_calls[1] == "\u5e7f\u5dde\u5e02"
+        assert runtime.weather_calls[1] == "440100"
 
     asyncio.run(scenario())
 

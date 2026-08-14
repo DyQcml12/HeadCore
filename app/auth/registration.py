@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from secrets import token_urlsafe
 from typing import Protocol
 
-from app.auth.passwords import hash_password
+from app.auth.codes import new_six_digit_code
+from app.auth.passwords import PasswordPolicyError, hash_password
 from app.auth.service import normalize_email
 from app.auth.sessions import hash_opaque_token
 
@@ -75,10 +75,12 @@ class RegistrationService:
             email_normalized = normalize_email(email)
         except Exception as exc:
             raise RegistrationError("invalid registration data") from exc
-        verification_token = token_urlsafe(32)
+        verification_token = new_six_digit_code()
         expires_at = timestamp + self._verification_lifetime
         try:
             password_hash = hash_password(password)
+        except PasswordPolicyError as exc:
+            raise RegistrationError(str(exc)) from exc
         except Exception as exc:
             raise RegistrationError("invalid registration data") from exc
         user = await self._repository.create_pending_user(

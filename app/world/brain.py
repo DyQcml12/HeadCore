@@ -32,6 +32,7 @@ class WorldToolAccessMode(StrEnum):
 class WorldRequestOrigin(StrEnum):
     USER = "user"
     SYSTEM = "system"
+    MODEL_TOOL = "model_tool"
 
 
 @dataclass(frozen=True)
@@ -258,7 +259,7 @@ class WorldBrainCoordinator:
                             tool_intent=decision.intent.value,
                         )
                     )
-                weather_location = resolution.candidates[0].name
+                weather_location = resolution.candidates[0].adcode
             if decision.intent == WorldToolIntent.WEATHER_CURRENT:
                 result = await self._runtime.current_weather(weather_location)
                 projection = self._assembler.from_weather(result, tool_intent=decision.intent.value)

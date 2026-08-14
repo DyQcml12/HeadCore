@@ -21,6 +21,7 @@ def test_non_stream_chat_registers_its_reply_for_authenticated_voice_playback(mo
 
     store = WebVoiceReplyStore(reply_ttl_seconds=300, min_interval_seconds=0)
     monkeypatch.setattr(main, "public_web_tts_configured", True)
+    monkeypatch.setattr(main, "public_web_auth_configured", False)
     monkeypatch.setattr(main, "web_voice_reply_store", store)
     monkeypatch.setattr(main, "build_head_runtime", lambda: ReplyRuntime())
 
@@ -53,6 +54,7 @@ def test_web_voice_api_uses_registered_reply_and_removes_temporary_audio(monkeyp
         return VoiceSynthesisResult(audio_path, audio_path, "neutral", str(kwargs["reply_text"]))
 
     monkeypatch.setattr(main, "public_web_tts_configured", True)
+    monkeypatch.setattr(main, "public_web_auth_configured", False)
     monkeypatch.setattr(main, "web_voice_reply_store", store)
     monkeypatch.setattr(main, "web_voice_tts_output_root", tmp_path / "web-voice")
     monkeypatch.setattr(main, "synthesize_voice_reply", fake_synthesize)
@@ -83,6 +85,7 @@ def test_web_voice_api_does_not_disclose_another_session_reply(monkeypatch) -> N
     reply_id = asyncio.run(store.remember(user_id="desk-user", session_id="desk-session", text="私有回复。"))
 
     monkeypatch.setattr(main, "public_web_tts_configured", True)
+    monkeypatch.setattr(main, "public_web_auth_configured", False)
     monkeypatch.setattr(main, "web_voice_reply_store", store)
 
     response = asyncio.run(

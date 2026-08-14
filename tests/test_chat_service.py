@@ -5,6 +5,8 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from app.core.config import load_settings
 from app.knowledge.models import MemoryProjection, MemoryScope
 from app.knowledge.runtime import MemoryProjectionRequest
@@ -15,8 +17,13 @@ from app.services.chat_service import ChatService
 from app.services.chat_service import build_recent_context
 from app.services.chat_service import extract_revoked_context_terms
 from app.services.model_audit import ModelInvocationAuditLogger
+from app.expression.core_api import STREAM_TRUNCATED_MARKER
+from app.head.self_profile import sanitize_self_profile
+from app.head.self_profile_store import save_self_profile
+from app.world.context import WorldContextProjection
+from app.world.tool_request import TOOL_DENIED_REPLY
 from app.services.model_client import DeepSeekClient
-from app.storage.chat_repository import JsonlChatRepository
+from app.storage.chat_repository import JsonlChatRepository, MessageRecord
 
 
 class FakeSuccessClient:
@@ -41,6 +48,87 @@ class FakePartialStreamClient(FakeSuccessClient):
     async def stream_chat(self, system_prompt: str, user_prompt: str):
         yield "已经发送"
         raise RuntimeError("stream interrupted")
+
+
+class SlowFirstChunkStreamClient:
+    def __init__(self, first_delay: float = 0.3) -> None:
+        self.first_delay = first_delay
+
+    async def chat(self, system_prompt: str, user_prompt: str) -> str:
+        return "慢回复。"
+
+    async def stream_chat(self, system_prompt: str, user_prompt: str):
+        await asyncio.sleep(self.first_delay)
+        yield "慢回复。"
+
+
+class SlowTailStreamClient:
+    async def chat(self, system_prompt: str, user_prompt: str) -> str:
+        return "第一句"
+
+    async def stream_chat(self, system_prompt: str, user_prompt: str):
+        yield "第一句"
+        await asyncio.sleep(0.2)
+        yield "第二句"
+
+
+class FakeUncertaintyClaimClient:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def chat(self, system_prompt: str, user_prompt: str) -> str:
+        self.calls += 1
+        if self.calls == 1:
+            return "我刚刚查了实时新闻，说今天有大事。"
+        return "我没法实时看新闻，你告诉我你看到的吧。"
+
+    async def stream_chat(self, system_prompt: str, user_prompt: str):
+        yield "我刚刚查了实时新闻，说今天有大事。"
+
+
+class FakeToolLoopClient:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.prompts: list[str] = []
+
+    async def chat(self, system_prompt: str, user_prompt: str) -> str:
+        self.calls += 1
+        self.prompts.append(system_prompt)
+        if self.calls == 1:
+            return "[USE_WORLD_TOOL:天气:上海]"
+        return "上海现在 30 度，记得防晒。"
+
+    async def stream_chat(self, system_prompt: str, user_prompt: str):
+        yield "[USE_WORLD_TOOL:天气:上海]"
+
+
+class ToolEvidenceWorldProvider:
+    def __init__(self, *, rendered: str) -> None:
+        self.rendered = rendered
+        self.origins: list[str] = []
+
+    async def build_context(
+        self,
+        user_input: str,
+        *,
+        platform: str | None = None,
+        request_origin: str = "user",
+    ) -> WorldContextProjection:
+        self.origins.append(request_origin)
+        return WorldContextProjection(
+            status="ready" if self.rendered else "not_requested",
+            tool_intent="weather_current",
+            rendered_text=self.rendered,
+            item_count=1 if self.rendered else 0,
+        )
+
+
+class EnglishOnlyStreamClient:
+    async def chat(self, system_prompt: str, user_prompt: str) -> str:
+        return "Hello world."
+
+    async def stream_chat(self, system_prompt: str, user_prompt: str):
+        yield "Hello world."
 
 
 class FakeAiIdentityClient:
@@ -711,11 +799,293 @@ def test_partial_stream_failure_does_not_append_fallback(tmp_path: Path) -> None
     text = asyncio.run(collect())
     invocation = read_jsonl(storage_dir / "model_invocations.jsonl")[0]
     trace = json.loads(invocation["request_metadata_json"]["provider_trace"])
-    assert text == "已经发送"
+    assert text == "已经发送" + STREAM_TRUNCATED_MARKER
+    assert invocation["request_metadata_json"]["stream_truncated"] == "true"
     assert invocation["used_live_api"] is True
     assert invocation["fallback_used"] is False
     assert trace[0]["success"] is False
     assert trace[0]["error_code"] == "unavailable"
+
+
+def test_stream_ttft_timeout_uses_fallback(tmp_path: Path) -> None:
+    settings = load_settings()
+    object.__setattr__(settings, "text_stream_ttft_timeout_seconds", 0.05)
+    service = ChatService(
+        settings,
+        client=SlowFirstChunkStreamClient(first_delay=0.2),
+        audit_logger=ModelInvocationAuditLogger(tmp_path / "audit.jsonl"),
+        repository=JsonlChatRepository(tmp_path / "storage"),
+    )
+
+    async def collect() -> str:
+        return "".join([chunk async for chunk in service.stream_reply("在吗", session_id="ttft")])
+
+    text = asyncio.run(collect())
+    invocation = read_jsonl(tmp_path / "storage" / "model_invocations.jsonl")[0]
+    assert STREAM_TRUNCATED_MARKER not in text
+    assert invocation["fallback_used"] is True
+    assert invocation["used_live_api"] is False
+    assert "first token timed out" in (invocation["error"] or "")
+
+
+def test_stream_total_budget_marks_truncation(tmp_path: Path) -> None:
+    settings = load_settings()
+    object.__setattr__(settings, "text_stream_total_budget_seconds", 0.05)
+    service = ChatService(
+        settings,
+        client=SlowTailStreamClient(),
+        audit_logger=ModelInvocationAuditLogger(tmp_path / "audit.jsonl"),
+        repository=JsonlChatRepository(tmp_path / "storage"),
+    )
+
+    async def collect() -> str:
+        return "".join([chunk async for chunk in service.stream_reply("继续", session_id="budget")])
+
+    text = asyncio.run(collect())
+    invocation = read_jsonl(tmp_path / "storage" / "model_invocations.jsonl")[0]
+    assert text == "第一句" + STREAM_TRUNCATED_MARKER
+    assert invocation["request_metadata_json"]["stream_truncated"] == "true"
+    assert invocation["used_live_api"] is True
+    assert invocation["fallback_used"] is False
+    assert "total budget" in (invocation["error"] or "")
+
+
+def test_stream_critical_violation_appends_correction(tmp_path: Path) -> None:
+    service = ChatService(
+        load_settings(),
+        client=FakeAiIdentityClient(),
+        audit_logger=ModelInvocationAuditLogger(tmp_path / "audit.jsonl"),
+        repository=JsonlChatRepository(tmp_path / "storage"),
+    )
+
+    async def collect() -> list[str]:
+        return [chunk async for chunk in service.stream_reply("你是谁？", session_id="critical")]
+
+    chunks = asyncio.run(collect())
+    invocation = read_jsonl(tmp_path / "storage" / "model_invocations.jsonl")[0]
+    messages = read_jsonl(tmp_path / "storage" / "messages.jsonl")
+    assert chunks[0] == "我是AI语言模型，无法扮演角色。"
+    assert len(chunks) == 2
+    assert STREAM_TRUNCATED_MARKER not in "".join(chunks)
+    assert invocation["request_metadata_json"]["stream_correction_appended"] == "true"
+    assert "Response evaluation failed" in (invocation["error"] or "")
+    assert messages[-1]["content"] == "".join(chunks)
+
+
+def test_stream_non_critical_violation_only_audits(tmp_path: Path) -> None:
+    service = ChatService(
+        load_settings(),
+        client=EnglishOnlyStreamClient(),
+        audit_logger=ModelInvocationAuditLogger(tmp_path / "audit.jsonl"),
+        repository=JsonlChatRepository(tmp_path / "storage"),
+    )
+
+    async def collect() -> str:
+        return "".join([chunk async for chunk in service.stream_reply("你好", session_id="audit")])
+
+    text = asyncio.run(collect())
+    invocation = read_jsonl(tmp_path / "storage" / "model_invocations.jsonl")[0]
+    evaluations = read_jsonl(tmp_path / "storage" / "persona_evaluations.jsonl")
+    assert text == "Hello world."
+    assert invocation["request_metadata_json"]["stream_correction_appended"] == "false"
+    assert invocation["error"] is None
+    assert evaluations[0]["passed"] is False
+
+
+def test_recent_context_window_settings_read_from_env(monkeypatch) -> None:
+    monkeypatch.setenv("RECENT_CONTEXT_MAX_MESSAGES", "3")
+    monkeypatch.setenv("RECENT_CONTEXT_MAX_CHARS", "12")
+    settings = load_settings()
+
+    assert settings.recent_context_max_messages == 3
+    assert settings.recent_context_max_chars == 12
+
+
+def test_build_recent_context_respects_configured_window() -> None:
+    messages = [
+        MessageRecord(
+            id=f"m{i}",
+            session_id="s1",
+            user_id="u1",
+            role="user" if i % 2 else "assistant",
+            content=f"第{i}条内容" + ("补字" * 30 if i == 3 else ""),
+            content_hash="h" * 64,
+            model_invocation_id=None,
+            created_at="2026-08-14T00:00:00+00:00",
+        )
+        for i in range(6)
+    ]
+
+    rendered = build_recent_context(messages, max_messages=2, max_chars=6)
+
+    assert "第3条" not in rendered
+    assert "第5条" in rendered
+    for line in rendered.splitlines():
+        if not line.startswith("- "):
+            continue
+        body = line.split(":", 1)[1].strip()
+        assert len(body) <= 6
+
+
+def _profile_with_uncertainty() -> object:
+    return sanitize_self_profile(
+        {
+            "schema_version": 1,
+            "revision": 1,
+            "updated_at": "2026-08-14T00:00:00+00:00",
+            "identity_summary": "我是胡桃，往生堂第七十七代堂主。",
+            "uncertainties_known": ["实时新闻"],
+            "capabilities_known": ["文字聊天"],
+        }
+    )
+
+
+def test_reply_self_profile_conflict_triggers_repair(tmp_path: Path) -> None:
+    repository = JsonlChatRepository(tmp_path / "storage")
+    asyncio.run(
+        save_self_profile(repository, user_id="u1", profile=_profile_with_uncertainty())
+    )
+    client = FakeUncertaintyClaimClient()
+    service = ChatService(
+        load_settings(),
+        client=client,
+        audit_logger=ModelInvocationAuditLogger(tmp_path / "audit.jsonl"),
+        repository=repository,
+    )
+
+    result = asyncio.run(service.reply("最近怎么样？", session_id="s1", user_id="u1"))
+
+    assert client.calls == 2
+    assert "实时新闻" not in result.text
+    assert result.used_live_api is True
+    conflicts = asyncio.run(
+        repository.list_memories(
+            user_id="u1",
+            memory_types=["head_self_conflict"],
+            limit=10,
+        )
+    )
+    assert conflicts
+    assert "self_profile_capability_conflict" in conflicts[-1].content
+
+
+def test_reply_without_profile_skips_consistency_gate(tmp_path: Path) -> None:
+    repository = JsonlChatRepository(tmp_path / "storage")
+    client = FakeUncertaintyClaimClient()
+    service = ChatService(
+        load_settings(),
+        client=client,
+        audit_logger=ModelInvocationAuditLogger(tmp_path / "audit.jsonl"),
+        repository=repository,
+    )
+
+    result = asyncio.run(service.reply("最近怎么样？", session_id="s1", user_id="u1"))
+
+    assert client.calls == 1
+    assert "实时新闻" in result.text
+
+
+def test_stream_self_profile_conflict_appends_correction(tmp_path: Path) -> None:
+    repository = JsonlChatRepository(tmp_path / "storage")
+    asyncio.run(
+        save_self_profile(repository, user_id="u1", profile=_profile_with_uncertainty())
+    )
+    service = ChatService(
+        load_settings(),
+        client=FakeUncertaintyClaimClient(),
+        audit_logger=ModelInvocationAuditLogger(tmp_path / "audit.jsonl"),
+        repository=repository,
+    )
+
+    async def collect() -> list[str]:
+        return [chunk async for chunk in service.stream_reply("最近怎么样？", session_id="s1", user_id="u1")]
+
+    chunks = asyncio.run(collect())
+    invocation = read_jsonl(tmp_path / "storage" / "model_invocations.jsonl")[0]
+
+    assert chunks[0] == "我刚刚查了实时新闻，说今天有大事。"
+    assert len(chunks) == 2
+    assert STREAM_TRUNCATED_MARKER not in "".join(chunks)
+    assert invocation["request_metadata_json"]["stream_correction_appended"] == "true"
+
+
+def test_world_tool_loop_regenerates_with_evidence(tmp_path: Path) -> None:
+    client = FakeToolLoopClient()
+    provider = ToolEvidenceWorldProvider(rendered="[世界工具证据] 上海 30 度")
+    service = ChatService(
+        load_settings(),
+        client=client,
+        audit_logger=ModelInvocationAuditLogger(tmp_path / "audit.jsonl"),
+        repository=JsonlChatRepository(tmp_path / "storage"),
+        world_context_provider=provider,
+    )
+
+    result = asyncio.run(service.reply("上海现在天气怎么样？", session_id="s1", user_id="u1"))
+
+    assert client.calls == 2
+    assert "USE_WORLD_TOOL" not in result.text
+    assert "30 度" in result.text
+    assert "USE_WORLD_TOOL" in client.prompts[0]
+    assert "[世界工具证据] 上海 30 度" in client.prompts[1]
+    assert provider.origins[-1] == "model_tool"
+    invocations = read_jsonl(tmp_path / "storage" / "model_invocations.jsonl")
+    assert invocations[0]["request_metadata_json"]["world_tool_iteration"] == "1"
+    assert invocations[0]["request_metadata_json"]["world_tool_status"] == "ready"
+
+
+def test_world_tool_loop_denies_when_no_evidence(tmp_path: Path) -> None:
+    client = FakeToolLoopClient()
+    provider = ToolEvidenceWorldProvider(rendered="")
+    service = ChatService(
+        load_settings(),
+        client=client,
+        audit_logger=ModelInvocationAuditLogger(tmp_path / "audit.jsonl"),
+        repository=JsonlChatRepository(tmp_path / "storage"),
+        world_context_provider=provider,
+    )
+
+    result = asyncio.run(service.reply("上海现在天气怎么样？", session_id="s1", user_id="u1"))
+
+    assert client.calls == 1
+    assert result.text == TOOL_DENIED_REPLY
+    assert "USE_WORLD_TOOL" not in result.text
+    assert result.fallback_used is True
+    assert result.used_live_api is False
+    assert result.error == "world_tool:not_requested"
+
+
+def test_world_tool_marker_without_provider_is_denied(tmp_path: Path) -> None:
+    service = ChatService(
+        replace(load_settings(), world_awareness_enabled=False),
+        client=FakeToolLoopClient(),
+        audit_logger=ModelInvocationAuditLogger(tmp_path / "audit.jsonl"),
+        repository=JsonlChatRepository(tmp_path / "storage"),
+    )
+
+    result = asyncio.run(service.reply("上海现在天气怎么样？", session_id="s1", user_id="u1"))
+
+    assert result.text == TOOL_DENIED_REPLY
+    assert "USE_WORLD_TOOL" not in result.text
+
+
+def test_tool_protocol_instruction_only_with_world_provider(tmp_path: Path) -> None:
+    plain_client = FakeToolLoopClient()
+    plain = ChatService(
+        replace(load_settings(), world_awareness_enabled=False),
+        client=plain_client,
+        repository=JsonlChatRepository(tmp_path / "storage"),
+    )
+    asyncio.run(plain.reply("你好", session_id="s1", user_id="u1"))
+    assert "USE_WORLD_TOOL" not in plain_client.prompts[0]
+
+
+def test_text_stream_budget_settings_read_from_env(monkeypatch) -> None:
+    monkeypatch.setenv("TEXT_STREAM_TTFT_TIMEOUT_SECONDS", "7")
+    monkeypatch.setenv("TEXT_STREAM_TOTAL_BUDGET_SECONDS", "123")
+    settings = load_settings()
+
+    assert settings.text_stream_ttft_timeout_seconds == 7.0
+    assert settings.text_stream_total_budget_seconds == 123.0
 
 
 def test_chat_writes_passing_persona_evaluation(tmp_path: Path) -> None:
@@ -962,6 +1332,15 @@ def test_deepseek_stream_delta_parser_reads_sse_content() -> None:
     assert DeepSeekClient._extract_stream_delta(line) == "半句"
     assert DeepSeekClient._extract_stream_delta("data: [DONE]") == ""
     assert DeepSeekClient._extract_stream_delta(": keepalive") == ""
+
+
+def test_deepseek_stream_delta_parser_raises_on_error_frames() -> None:
+    with pytest.raises(RuntimeError, match="error frame"):
+        DeepSeekClient._extract_stream_delta('data: {"error":{"message":"boom"}}')
+    with pytest.raises(RuntimeError, match="non-JSON"):
+        DeepSeekClient._extract_stream_delta("data: not-json")
+    with pytest.raises(RuntimeError, match="no choices"):
+        DeepSeekClient._extract_stream_delta('data: {"id":"x"}')
 
 
 def test_non_stream_chat_records_provider_route_trace(tmp_path: Path) -> None:

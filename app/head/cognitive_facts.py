@@ -12,6 +12,7 @@ from app.head.contracts import (
     CognitiveFactSourceKind,
     CognitiveFactStatus,
 )
+from app.head.world_model import belief_strength
 from app.storage.chat_repository import ChatRepository
 
 
@@ -207,7 +208,35 @@ def resolve_cognitive_facts(
     )
 
 
-def project_cognitive_facts(facts: Iterable[CognitiveFact], *, limit: int = 8) -> tuple[str, ...]:
+def cognitive_fact_strength(
+    fact: CognitiveFact,
+    *,
+    now: dt.datetime | None = None,
+) -> float:
+    """Recency-decayed belief strength for an active fact.
+
+    Expired or non-active facts carry zero strength; the projection layer uses
+    this value for ordering so fresh evidence outranks old evidence.
+    """
+    current_time = _aware(now or dt.datetime.now(dt.UTC))
+    if fact.status != CognitiveFactStatus.ACTIVE:
+        return 0.0
+    if _parse_time(fact.expires_at) <= current_time:
+        return 0.0
+    return belief_strength(
+        fact.confidence,
+        since_at=_parse_time(fact.observed_at),
+        now=current_time,
+    )
+
+
+def project_cognitive_facts(
+    facts: Iterable[CognitiveFact],
+    *,
+    limit: int = 8,
+    now: dt.datetime | None = None,
+) -> tuple[str, ...]:
+    current_time = _aware(now or dt.datetime.now(dt.UTC))
     active: dict[tuple[str, str], CognitiveFact] = {}
     for raw_fact in facts:
         fact = _normalize_fact(raw_fact)
@@ -218,7 +247,12 @@ def project_cognitive_facts(facts: Iterable[CognitiveFact], *, limit: int = 8) -
         if current is None or fact.confidence > current.confidence:
             active[identity] = fact
     projected = sorted(
-        active.values(), key=lambda fact: (-fact.confidence, fact.key, fact.fact_id)
+        active.values(),
+        key=lambda fact: (
+            -cognitive_fact_strength(fact, now=current_time),
+            fact.key,
+            fact.fact_id,
+        ),
     )
     return tuple(
         f"世界事实[{fact.key}]={fact.value};source={fact.source_id};"

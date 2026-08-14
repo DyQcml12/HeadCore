@@ -15,6 +15,45 @@ from app.head.contracts import (
 )
 
 DEFAULT_EVENT_CONTEXT_MAX_AGE = dt.timedelta(days=30)
+DEFAULT_BELIEF_HALF_LIFE = dt.timedelta(days=30)
+DEFAULT_BELIEF_STALE_THRESHOLD = 0.1
+
+
+def belief_strength(
+    confidence: float,
+    *,
+    since_at: dt.datetime,
+    now: dt.datetime,
+    half_life: dt.timedelta = DEFAULT_BELIEF_HALF_LIFE,
+) -> float:
+    """Exponential recency decay for belief strength.
+
+    A fresh assertion keeps its full confidence; after one half-life it halves.
+    Deterministic and reproducible for a fixed now.
+    """
+    if half_life <= dt.timedelta():
+        raise ValueError("half_life must be positive")
+    age = _aware(now) - _aware(since_at)
+    if age <= dt.timedelta():
+        return max(0.0, min(1.0, confidence))
+    factor = 0.5 ** (age / half_life)
+    return max(0.0, min(1.0, confidence * factor))
+
+
+def relation_belief_strength(relation: WorldRelation, now: dt.datetime) -> float:
+    return belief_strength(
+        relation.confidence,
+        since_at=_parse_time(relation.valid_from),
+        now=now,
+    )
+
+
+def event_belief_strength(event: WorldEvent, now: dt.datetime) -> float:
+    return belief_strength(
+        event.confidence,
+        since_at=_event_time(event),
+        now=now,
+    )
 
 
 def build_head_world_model(
@@ -61,6 +100,15 @@ def build_head_world_model(
         if _event_time(item) < current_time - DEFAULT_EVENT_CONTEXT_MAX_AGE
     }
     uncertainties.extend(f"world_event_stale:{event_type}" for event_type in sorted(stale_event_types))
+    stale_relations = sorted(
+        item.relation_id
+        for item in relation_items
+        if item.status == WorldAssertionStatus.ACTIVE
+        and relation_belief_strength(item, current_time) < DEFAULT_BELIEF_STALE_THRESHOLD
+    )
+    uncertainties.extend(
+        f"world_relation_stale:{relation_id}" for relation_id in stale_relations
+    )
     return HeadWorldModel(
         entities=entity_items,
         relations=tuple(sorted(relation_items, key=lambda item: item.relation_id)),
@@ -81,21 +129,36 @@ def project_head_world_model(
     if event_max_age <= dt.timedelta():
         raise ValueError("event_max_age must be positive")
     names = {entity.entity_id: entity.name for entity in model.entities}
-    values: list[str] = []
+    relation_values: list[tuple[float, str, str]] = []
     for relation in model.relations:
         if relation.status != WorldAssertionStatus.ACTIVE:
             continue
-        values.append(
-            f"世界关系={names[relation.subject_id]}|{relation.predicate}|{names[relation.object_id]};"
-            f"source={relation.source_id};confidence={relation.confidence:.2f}"
+        strength = relation_belief_strength(relation, current_time)
+        if strength < DEFAULT_BELIEF_STALE_THRESHOLD:
+            continue
+        relation_values.append(
+            (
+                strength,
+                relation.relation_id,
+                f"世界关系={names[relation.subject_id]}|{relation.predicate}|{names[relation.object_id]};"
+                f"source={relation.source_id};confidence={relation.confidence:.2f}",
+            )
         )
+    relation_values.sort(key=lambda item: (-item[0], item[1]))
+    event_values: list[tuple[float, str]] = []
     for event in reversed(model.events):
         if _event_time(event) < current_time - event_max_age:
             continue
-        values.append(
-            f"世界事件={event.summary};occurred_at={event.occurred_at};"
-            f"source={event.source_id};confidence={event.confidence:.2f}"
+        event_values.append(
+            (
+                event_belief_strength(event, current_time),
+                f"世界事件={event.summary};occurred_at={event.occurred_at};"
+                f"source={event.source_id};confidence={event.confidence:.2f}",
+            )
         )
+    event_values.sort(key=lambda item: -item[0])
+    values = [text for _strength, _key, text in relation_values]
+    values.extend(text for _strength, text in event_values)
     for hypothesis in model.causal_hypotheses:
         label = "已确认因果" if hypothesis.confirmed else "因果假设(不得当作事实)"
         values.append(f"{label}={hypothesis.rationale};confidence={hypothesis.confidence:.2f}")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 import json
 from collections.abc import AsyncIterator
@@ -20,6 +21,16 @@ from app.head import (
     save_cognitive_fact,
 )
 from app.dialogue.expression_policy import sanitize_visible_reply
+from app.expression.core_api import STREAM_TRUNCATED_MARKER
+from app.world.tool_request import (
+    TOOL_DENIED_REPLY,
+    WorldToolRequest,
+    parse_tool_request,
+    render_tool_protocol_instruction,
+)
+from app.head.self_consistency import evaluate_self_consistency
+from app.head.self_profile import SelfProfile, render_self_profile_projection
+from app.head.self_profile_store import load_self_profile
 from app.head.cognitive_facts import resolve_cognitive_facts
 from app.head.world_state import (
     HeadWorldState,
@@ -84,6 +95,22 @@ from app.storage.chat_repository import MessageRecord
 from app.storage.chat_repository import SessionRecord
 from app.storage.repository_factory import create_chat_repository
 from app.world.context import WorldContextBuildResult, WorldContextProjection
+
+
+CRITICAL_STREAM_REASONS = frozenset(
+    {
+        "claims_ai_identity",
+        "cross_persona_identity_leak",
+        "hostile_or_humiliating_reply",
+        "repeats_self_harm_directive",
+        "death_topic_misuse",
+        "death_joke_wrong_scene",
+        "repeats_unconfirmed_relationship_term",
+        "low_trust_intimacy_escalation",
+        "repeats_revoked_memory",
+        "fabricated_real_world_experience",
+    }
+)
 
 
 BASE_SYSTEM_PROMPT = "\n".join(
@@ -180,6 +207,7 @@ class PreparedChat:
     head_world_state: HeadWorldState
     world_grounding_facts: tuple[tuple[str, str], ...]
     head_runtime_origin: str
+    self_profile: SelfProfile | None
 
 
 class ChatService:
@@ -284,11 +312,14 @@ class ChatService:
             )
             return response
         try:
+            system_prompt = prepared.system_prompt
+            if self.world_context_provider is not None:
+                system_prompt = system_prompt + "\n" + render_tool_protocol_instruction()
             decision = await self.provider_router.route(
                 ProviderCapability.TEXT,
                 self._text_routing_policy(),
                 lambda provider: provider.generate_text(
-                    TextRequest(prepared.system_prompt, prepared.user_prompt)
+                    TextRequest(system_prompt, prepared.user_prompt)
                 ),
             )
             text = sanitize_visible_reply(decision.value)
@@ -301,17 +332,72 @@ class ChatService:
                 persona_profile=prepared.persona_profile_id,
                 world_facts=prepared.world_grounding_facts,
             )
-            if not evaluation.passed:
+            self_conflicts = evaluate_self_consistency(
+                prepared.self_profile,
+                user_input=user_input,
+                response_text=text,
+            )
+            if self_conflicts:
+                await self._record_self_conflicts(
+                    user_id=user_id,
+                    session_id=prepared.session.id,
+                    conflicts=self_conflicts,
+                )
+            if not evaluation.passed or self_conflicts:
                 repair_decision = await self._repair_live_response_decision(
-                    system_prompt=prepared.system_prompt,
+                    system_prompt=system_prompt,
                     user_prompt=prepared.user_prompt,
                     user_input=user_input,
                     failed_text=text,
-                    reasons=evaluation.reasons,
+                    reasons=list(dict.fromkeys([*evaluation.reasons, *self_conflicts])),
                 )
                 live_repair_attempted = True
                 if repair_decision:
                     text = sanitize_visible_reply(repair_decision.value)
+            world_tool_iteration = 0
+            world_tool_status = "none"
+            tool_request = parse_tool_request(text)
+            if tool_request is not None:
+                tool_status, tool_text, tool_denied, tool_decision = await self._run_world_tool_step(
+                    tool_request,
+                    prepared=prepared,
+                    user_input=user_input,
+                    platform=platform,
+                )
+                world_tool_iteration = 1
+                world_tool_status = tool_status
+                text = tool_text
+                if tool_denied:
+                    response = ChatResponse(
+                        text=text,
+                        provider="local",
+                        model="world-tool-guard",
+                        used_live_api=False,
+                        fallback_used=True,
+                        error="world_tool:" + tool_status,
+                    )
+                    await self._write_records(
+                        started_at=prepared.started_at,
+                        prompt_text=prepared.prompt_text,
+                        response=response,
+                        session_id=prepared.session.id,
+                        user_id=user_id,
+                        user_input=user_input,
+                        persona_profile=prepared.persona_profile_id,
+                        head_state=prepared.head_state,
+                        allow_head_event_write=prepared.allow_head_event_write,
+                        request_metadata_json={
+                            "api_path": "/chat/completions",
+                            "live_repair_attempted": str(live_repair_attempted).lower(),
+                            "world_tool_iteration": str(world_tool_iteration),
+                            "world_tool_status": world_tool_status,
+                            **provider_trace_metadata(decision.trace),
+                            **build_request_metadata(prepared, include_api_path=False),
+                        },
+                        world_facts=prepared.world_grounding_facts,
+                    )
+                    return response
+                decision = tool_decision
             response = ChatResponse(
                 text=text,
                 provider=str(decision.provider_id),
@@ -331,6 +417,8 @@ class ChatService:
                 request_metadata_json={
                     "api_path": "/chat/completions",
                     "live_repair_attempted": str(live_repair_attempted).lower(),
+                    "world_tool_iteration": str(world_tool_iteration),
+                    "world_tool_status": world_tool_status,
                     **provider_trace_metadata(decision.trace),
                     **(
                         provider_trace_metadata(repair_decision.trace, prefix="repair_")
@@ -463,14 +551,40 @@ class ChatService:
         buffer_for_world_grounding = bool(prepared.world_grounding_facts)
         stream_repair_attempted = False
         repair_decision: RoutingDecision[str] | None = None
+        stream_truncated = False
+        stream_correction_appended = False
+        deadline = time.monotonic() + self.settings.text_stream_total_budget_seconds
+        iterator = route.__aiter__()
         try:
-            async for chunk in route:
-                chunks.append(chunk)
-                if not buffer_for_world_grounding:
-                    yield chunk
+            try:
+                async with asyncio.timeout(self.settings.text_stream_ttft_timeout_seconds):
+                    first_chunk = await anext(iterator)
+            except StopAsyncIteration:
+                first_chunk = None
+            except TimeoutError as exc:
+                raise RuntimeError(
+                    "text stream first token timed out after "
+                    f"{self.settings.text_stream_ttft_timeout_seconds:g}s"
+                ) from exc
+            if first_chunk is None:
+                raise RuntimeError("Stream response content is empty.")
+            chunks.append(first_chunk)
+            if not buffer_for_world_grounding:
+                yield first_chunk
+            try:
+                remaining = deadline - time.monotonic()
+                async with asyncio.timeout(max(remaining, 0.001)):
+                    async for chunk in iterator:
+                        chunks.append(chunk)
+                        if not buffer_for_world_grounding:
+                            yield chunk
+            except TimeoutError:
+                stream_truncated = True
             response.text = sanitize_visible_reply("".join(chunks))
             response.provider = str(route.provider_id or self.settings.model_provider)
-            if not response.text:
+            if stream_truncated:
+                response.error = "text stream exceeded total budget and was truncated"
+            elif not response.text:
                 raise RuntimeError("Stream response content is empty.")
             if buffer_for_world_grounding:
                 evaluation = self.evaluator.evaluate(
@@ -509,6 +623,48 @@ class ChatService:
                             repaired_evaluation.reasons
                         )
                 yield response.text
+            else:
+                if not stream_truncated:
+                    evaluation = self.evaluator.evaluate(
+                        user_input=user_input,
+                        response_text=response.text,
+                        fallback_used=False,
+                        persona_profile=prepared.persona_profile_id,
+                    )
+                    self_conflicts = evaluate_self_consistency(
+                        prepared.self_profile,
+                        user_input=user_input,
+                        response_text=response.text,
+                    )
+                    if self_conflicts:
+                        await self._record_self_conflicts(
+                            user_id=user_id,
+                            session_id=prepared.session.id,
+                            conflicts=self_conflicts,
+                        )
+                    stream_tool_request = parse_tool_request(response.text)
+                    if stream_tool_request is not None:
+                        response.text = TOOL_DENIED_REPLY
+                        response.error = "world_tool:unsupported_stream"
+                        stream_correction_appended = True
+                        yield TOOL_DENIED_REPLY
+                    elif not evaluation.passed or self_conflicts:
+                        critical = (set(evaluation.reasons) & CRITICAL_STREAM_REASONS) or set(
+                            self_conflicts
+                        )
+                        if critical:
+                            correction = self._evaluation_fallback_reply(
+                                user_input,
+                                persona_profile=prepared.persona_profile_id,
+                            )
+                            response.text = response.text + correction
+                            response.error = "Response evaluation failed: " + ",".join(
+                                evaluation.reasons
+                            )
+                            stream_correction_appended = True
+                            yield correction
+                if stream_truncated:
+                    yield STREAM_TRUNCATED_MARKER
         except Exception as exc:
             error = exc.last_error if isinstance(exc, RoutingFailed) and exc.last_error else exc
             if (
@@ -517,6 +673,7 @@ class ChatService:
                 and chunks
                 and not buffer_for_world_grounding
             ):
+                stream_truncated = True
                 response = ChatResponse(
                     text="".join(chunks).strip(),
                     provider=str(route.provider_id or self.settings.model_provider),
@@ -524,6 +681,7 @@ class ChatService:
                     used_live_api=True,
                     error=redact_secrets(str(error)),
                 )
+                yield STREAM_TRUNCATED_MARKER
             else:
                 fallback = self._fallback_response(
                     user_input=user_input,
@@ -549,6 +707,8 @@ class ChatService:
                     "provider_call_type": "stream",
                     "stream_world_grounding_buffered": str(buffer_for_world_grounding).lower(),
                     "stream_repair_attempted": str(stream_repair_attempted).lower(),
+                    "stream_truncated": str(stream_truncated).lower(),
+                    "stream_correction_appended": str(stream_correction_appended).lower(),
                     **provider_trace_metadata(route.trace),
                     **(
                         provider_trace_metadata(repair_decision.trace, prefix="repair_")
@@ -591,7 +751,10 @@ class ChatService:
             platform_group_id=platform_group_id,
         )
         session = await self.repository.ensure_session(user_id=user_id, client_session_id=session_id)
-        recent_messages = await self.repository.list_recent_messages(session_id=session.id, limit=8)
+        recent_messages = await self.repository.list_recent_messages(
+            session_id=session.id,
+            limit=self.settings.recent_context_max_messages,
+        )
         repetition_signal = build_repetition_signal(
             user_input=user_input,
             recent_messages=recent_messages,
@@ -611,6 +774,10 @@ class ChatService:
             self.repository,
             user_id=user_id,
         )
+        try:
+            self_profile = await load_self_profile(self.repository, user_id=user_id)
+        except Exception:
+            self_profile = None
         head_state = build_head_state(
             subject_id=user_id,
             user_input=user_input,
@@ -711,6 +878,8 @@ class ChatService:
                 recent_messages,
                 revoked_terms=extract_revoked_context_terms(memory_records),
                 assistant_label=platform_persona.display_name,
+                max_messages=self.settings.recent_context_max_messages,
+                max_chars=self.settings.recent_context_max_chars,
             ),
             repetition_signal=repetition_signal,
             input_source=input_source,
@@ -839,6 +1008,10 @@ class ChatService:
             self_state=self_state,
             social_state=social_state,
         )
+        if self_profile is not None:
+            profile_projection = render_self_profile_projection(self_profile)
+            if profile_projection:
+                system_prompt = system_prompt + "\n" + profile_projection
         if world_context.rendered_text:
             system_prompt = system_prompt + "\n" + world_context.rendered_text
         system_prompt = system_prompt + "\n" + render_head_world_state(head_world_state)
@@ -887,6 +1060,7 @@ class ChatService:
             head_world_state=head_world_state,
             world_grounding_facts=_weather_grounding_facts(current_world_facts),
             head_runtime_origin=head_runtime_origin,
+            self_profile=self_profile,
         )
 
     def _fallback_response(
@@ -990,6 +1164,24 @@ class ChatService:
             error=response.error,
         )
 
+    async def _record_self_conflicts(
+        self,
+        *,
+        user_id: str,
+        session_id: str,
+        conflicts: tuple[str, ...],
+    ) -> None:
+        try:
+            await self.repository.save_memory(
+                user_id=user_id,
+                session_id=session_id,
+                memory_type="head_self_conflict",
+                content=json.dumps({"codes": list(conflicts)}, ensure_ascii=False),
+                confidence=0.8,
+            )
+        except Exception:
+            return
+
     @staticmethod
     def _local_reply(user_input: str, *, persona_profile: str = "hutao_v1") -> str:
         profile = resolve_persona_profile(persona_profile).profile
@@ -1030,6 +1222,65 @@ class ChatService:
         if any(marker in user_input for marker in ["\u9879\u76ee", "\u8ba1\u5212", "\u505a\u4e0d\u5b8c", "\u4e0b\u4e00\u6b65"]):
             return "先别盯整座山。我先陪你圈一个今天能落笔的下一步。"
         return "\u6211\u5728\u3002\u5148\u8bf4\u773c\u524d\u6700\u91cd\u8981\u7684\u4e00\u4ef6\u4e8b\u3002"
+
+    async def _run_world_tool_step(
+        self,
+        request: WorldToolRequest,
+        *,
+        prepared: PreparedChat,
+        user_input: str,
+        platform: str | None,
+    ) -> tuple[str, str, bool, RoutingDecision[str] | None]:
+        """Single-step restricted world tool loop (never more than one iteration).
+
+        The model may request one read-only, whitelisted world tool via a strict
+        marker. The evidence is injected into the prompt and the reply is
+        regenerated once. Any failure or a second marker is replaced with a
+        denial sentence; the loop never writes to the world and never recurses.
+        """
+        if self.world_context_provider is None:
+            return "unavailable", TOOL_DENIED_REPLY, True, None
+        try:
+            tool_context = await self.world_context_provider.build_context(
+                request.as_user_query(),
+                platform=platform,
+                request_origin="model_tool",
+            )
+        except Exception:
+            return "unavailable", TOOL_DENIED_REPLY, True, None
+        if not tool_context.rendered_text:
+            return tool_context.status or "unavailable", TOOL_DENIED_REPLY, True, None
+        decision = await self.provider_router.route(
+            ProviderCapability.TEXT,
+            self._text_routing_policy(),
+            lambda provider: provider.generate_text(
+                TextRequest(
+                    prepared.system_prompt + "\n" + render_tool_protocol_instruction() + "\n" + tool_context.rendered_text,
+                    prepared.user_prompt,
+                )
+            ),
+        )
+        text = sanitize_visible_reply(decision.value)
+        if parse_tool_request(text) is not None:
+            return tool_context.status, TOOL_DENIED_REPLY, True, None
+        evaluation = self.evaluator.evaluate(
+            user_input=user_input,
+            response_text=text,
+            fallback_used=False,
+            persona_profile=prepared.persona_profile_id,
+            world_facts=prepared.world_grounding_facts,
+        )
+        if not evaluation.passed:
+            return (
+                tool_context.status,
+                self._evaluation_fallback_reply(
+                    user_input,
+                    persona_profile=prepared.persona_profile_id,
+                ),
+                True,
+                None,
+            )
+        return tool_context.status, text, False, decision
 
     async def _repair_live_response_decision(
         self,
@@ -1172,17 +1423,19 @@ def build_recent_context(
     *,
     revoked_terms: set[str] | None = None,
     assistant_label: str = "胡桃",
+    max_messages: int = 8,
+    max_chars: int = 80,
 ) -> str:
     if not messages:
         return ""
     blocked_terms = revoked_terms or set()
     compact_lines = []
-    for message in messages[-8:]:
+    for message in messages[-max_messages:]:
         role = "用户" if message.role == "user" else assistant_label
         content = message.content.replace("\n", " ").strip()
         if blocked_terms and any(term in content for term in blocked_terms):
             continue
-        compact_lines.append(f"- {role}: {content[:80]}")
+        compact_lines.append(f"- {role}: {content[:max_chars]}")
     if not compact_lines:
         return ""
     return "最近对话：\n" + "\n".join(compact_lines)

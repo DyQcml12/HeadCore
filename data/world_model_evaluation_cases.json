@@ -1,0 +1,539 @@
+{
+  "version": 1,
+  "now": "2026-07-22T12:00:00+00:00",
+  "cases": [
+    {
+      "id": "dedupe-weather",
+      "category": "dedupe",
+      "facts": [
+        {
+          "fact_id": "f1",
+          "key": "weather.440100.temperature_c",
+          "value": "30",
+          "source_id": "amap"
+        }
+      ],
+      "incoming_facts": [
+        {
+          "fact_id": "f2",
+          "key": "weather.440100.temperature_c",
+          "value": "30",
+          "source_id": "amap",
+          "version": 2
+        }
+      ],
+      "expect": {
+        "fact_keys_projected": [
+          "weather.440100.temperature_c"
+        ],
+        "fact_uncertainty_contains": []
+      }
+    },
+    {
+      "id": "dedupe-news",
+      "category": "dedupe",
+      "facts": [
+        {
+          "fact_id": "f1",
+          "key": "news.abc123.title",
+          "value": "联合国新报告",
+          "source_id": "un-news"
+        }
+      ],
+      "incoming_facts": [
+        {
+          "fact_id": "f2",
+          "key": "news.abc123.title",
+          "value": "联合国新报告",
+          "source_id": "un-news",
+          "version": 2
+        }
+      ],
+      "expect": {
+        "fact_keys_projected": [
+          "news.abc123.title"
+        ]
+      }
+    },
+    {
+      "id": "decay-stale-relation",
+      "category": "time_decay",
+      "entities": [
+        {
+          "entity_id": "project",
+          "entity_type": "software",
+          "name": "HutaoChatCore"
+        },
+        {
+          "entity_id": "server-a",
+          "entity_type": "service",
+          "name": "Core 服务"
+        }
+      ],
+      "relations": [
+        {
+          "relation_id": "old-r",
+          "subject_id": "project",
+          "predicate": "uses_service",
+          "object_id": "server-a",
+          "source_id": "runtime",
+          "valid_from": "2026-02-20T10:00:00+00:00",
+          "confidence": 0.9
+        },
+        {
+          "relation_id": "fresh-r",
+          "subject_id": "project",
+          "predicate": "uses_service",
+          "object_id": "server-a",
+          "source_id": "runtime",
+          "valid_from": "2026-07-22T10:00:00+00:00",
+          "confidence": 0.9
+        }
+      ],
+      "expect": {
+        "projection_contains": [
+          "uses_service"
+        ],
+        "uncertainties_contains": [
+          "world_relation_stale:old-r"
+        ]
+      }
+    },
+    {
+      "id": "decay-fresh-kept",
+      "category": "time_decay",
+      "entities": [
+        {
+          "entity_id": "project",
+          "entity_type": "software",
+          "name": "HutaoChatCore"
+        },
+        {
+          "entity_id": "server-a",
+          "entity_type": "service",
+          "name": "Core 服务"
+        }
+      ],
+      "relations": [
+        {
+          "relation_id": "fresh-r",
+          "subject_id": "project",
+          "predicate": "uses_service",
+          "object_id": "server-a",
+          "source_id": "runtime",
+          "valid_from": "2026-07-22T10:00:00+00:00",
+          "confidence": 0.9
+        }
+      ],
+      "expect": {
+        "projection_contains": [
+          "uses_service"
+        ],
+        "uncertainties_excludes": [
+          "world_relation_stale"
+        ]
+      }
+    },
+    {
+      "id": "decay-old-event",
+      "category": "time_decay",
+      "entities": [
+        {
+          "entity_id": "project",
+          "entity_type": "software",
+          "name": "HutaoChatCore"
+        },
+        {
+          "entity_id": "server-a",
+          "entity_type": "service",
+          "name": "Core 服务"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "old",
+          "event_type": "deployment",
+          "actor_ids": [
+            "project",
+            "server-a"
+          ],
+          "occurred_at": "2026-05-01T10:00:00+00:00",
+          "source_id": "runtime",
+          "summary": "旧服务事件",
+          "confidence": 0.9
+        }
+      ],
+      "expect": {
+        "projection_excludes": [
+          "旧服务事件"
+        ],
+        "uncertainties_contains": [
+          "world_event_stale:deployment"
+        ]
+      }
+    },
+    {
+      "id": "counterfactual-support",
+      "category": "counterfactual",
+      "entities": [
+        {
+          "entity_id": "project",
+          "entity_type": "software",
+          "name": "HutaoChatCore"
+        },
+        {
+          "entity_id": "server-a",
+          "entity_type": "service",
+          "name": "Core 服务"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "cause",
+          "event_type": "config_change",
+          "actor_ids": [
+            "project",
+            "server-a"
+          ],
+          "occurred_at": "2026-07-19T10:00:00+00:00",
+          "source_id": "runtime",
+          "summary": "配置变化",
+          "confidence": 0.9
+        },
+        {
+          "event_id": "effect",
+          "event_type": "service_interrupt",
+          "actor_ids": [
+            "project",
+            "server-a"
+          ],
+          "occurred_at": "2026-07-19T10:05:00+00:00",
+          "source_id": "runtime",
+          "summary": "服务中断",
+          "confidence": 0.9
+        },
+        {
+          "event_id": "e1",
+          "event_type": "deploy_ok",
+          "actor_ids": [
+            "project",
+            "server-a"
+          ],
+          "occurred_at": "2026-07-21T10:00:00+00:00",
+          "source_id": "runtime",
+          "summary": "部署成功",
+          "confidence": 0.9
+        }
+      ],
+      "hypotheses": [
+        {
+          "id": "h1",
+          "cause_event_id": "cause",
+          "effect_event_id": "effect",
+          "rationale": "配置变化导致恢复",
+          "confidence": 0.9,
+          "evidence_ids": [],
+          "confirmed": false
+        }
+      ],
+      "trials": [
+        {
+          "id": "t1",
+          "hypothesis_id": "h1",
+          "expected_event_type": "deploy_ok",
+          "counter_event_types": [],
+          "created_at": "2026-07-20T00:00:00+00:00",
+          "horizon_days": 7
+        }
+      ],
+      "expect": {
+        "supported": [
+          "h1"
+        ],
+        "confirmed": [
+          "h1"
+        ],
+        "refuted": [],
+        "projection_contains": [
+          "已确认因果"
+        ]
+      }
+    },
+    {
+      "id": "counterfactual-refute",
+      "category": "counterfactual",
+      "entities": [
+        {
+          "entity_id": "project",
+          "entity_type": "software",
+          "name": "HutaoChatCore"
+        },
+        {
+          "entity_id": "server-a",
+          "entity_type": "service",
+          "name": "Core 服务"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "cause",
+          "event_type": "config_change",
+          "actor_ids": [
+            "project",
+            "server-a"
+          ],
+          "occurred_at": "2026-07-19T10:00:00+00:00",
+          "source_id": "runtime",
+          "summary": "配置变化",
+          "confidence": 0.9
+        },
+        {
+          "event_id": "effect",
+          "event_type": "service_interrupt",
+          "actor_ids": [
+            "project",
+            "server-a"
+          ],
+          "occurred_at": "2026-07-19T10:05:00+00:00",
+          "source_id": "runtime",
+          "summary": "服务中断",
+          "confidence": 0.9
+        },
+        {
+          "event_id": "e2",
+          "event_type": "deploy_failed",
+          "actor_ids": [
+            "project",
+            "server-a"
+          ],
+          "occurred_at": "2026-07-21T11:00:00+00:00",
+          "source_id": "runtime",
+          "summary": "部署失败",
+          "confidence": 0.9
+        }
+      ],
+      "hypotheses": [
+        {
+          "id": "h2",
+          "cause_event_id": "cause",
+          "effect_event_id": "effect",
+          "rationale": "配置变化导致部署失败",
+          "confidence": 0.9,
+          "evidence_ids": [],
+          "confirmed": false
+        }
+      ],
+      "trials": [
+        {
+          "id": "t2",
+          "hypothesis_id": "h2",
+          "expected_event_type": "deploy_ok",
+          "counter_event_types": [
+            "deploy_failed"
+          ],
+          "created_at": "2026-07-20T00:00:00+00:00",
+          "horizon_days": 7
+        }
+      ],
+      "expect": {
+        "refuted": [
+          "h2"
+        ],
+        "supported": [],
+        "confirmed": [],
+        "projection_excludes": [
+          "配置变化导致部署失败"
+        ]
+      }
+    },
+    {
+      "id": "counterfactual-expire",
+      "category": "counterfactual",
+      "entities": [
+        {
+          "entity_id": "project",
+          "entity_type": "software",
+          "name": "HutaoChatCore"
+        },
+        {
+          "entity_id": "server-a",
+          "entity_type": "service",
+          "name": "Core 服务"
+        }
+      ],
+      "events": [
+        {
+          "event_id": "cause",
+          "event_type": "config_change",
+          "actor_ids": [
+            "project",
+            "server-a"
+          ],
+          "occurred_at": "2026-07-19T10:00:00+00:00",
+          "source_id": "runtime",
+          "summary": "配置变化",
+          "confidence": 0.9
+        },
+        {
+          "event_id": "effect",
+          "event_type": "service_interrupt",
+          "actor_ids": [
+            "project",
+            "server-a"
+          ],
+          "occurred_at": "2026-07-19T10:05:00+00:00",
+          "source_id": "runtime",
+          "summary": "服务中断",
+          "confidence": 0.9
+        }
+      ],
+      "hypotheses": [
+        {
+          "id": "h3",
+          "cause_event_id": "cause",
+          "effect_event_id": "effect",
+          "rationale": "配置变化导致延迟",
+          "confidence": 0.9,
+          "evidence_ids": [],
+          "confirmed": false
+        }
+      ],
+      "trials": [
+        {
+          "id": "t3",
+          "hypothesis_id": "h3",
+          "expected_event_type": "deploy_ok",
+          "counter_event_types": [],
+          "created_at": "2026-07-01T00:00:00+00:00",
+          "horizon_days": 7
+        }
+      ],
+      "expect": {
+        "confirmed": [],
+        "refuted": [],
+        "projection_contains": [
+          "因果假设(不得当作事实)"
+        ]
+      }
+    },
+    {
+      "id": "conflict-cross-source-fact",
+      "category": "conflict",
+      "facts": [
+        {
+          "fact_id": "f1",
+          "key": "weather.440100.temperature_c",
+          "value": "30",
+          "source_id": "amap"
+        }
+      ],
+      "incoming_facts": [
+        {
+          "fact_id": "f2",
+          "key": "weather.440100.temperature_c",
+          "value": "22",
+          "source_id": "qweather"
+        }
+      ],
+      "expect": {
+        "fact_keys_excluded": [
+          "weather.440100.temperature_c"
+        ],
+        "fact_uncertainty_contains": [
+          "cognitive_fact_conflict:weather.440100.temperature_c"
+        ]
+      }
+    },
+    {
+      "id": "conflict-relation",
+      "category": "conflict",
+      "entities": [
+        {
+          "entity_id": "project",
+          "entity_type": "software",
+          "name": "HutaoChatCore"
+        },
+        {
+          "entity_id": "server-a",
+          "entity_type": "service",
+          "name": "服务 A"
+        },
+        {
+          "entity_id": "server-b",
+          "entity_type": "service",
+          "name": "服务 B"
+        }
+      ],
+      "relations": [
+        {
+          "relation_id": "r1",
+          "subject_id": "project",
+          "predicate": "uses_service",
+          "object_id": "server-a",
+          "source_id": "runtime",
+          "valid_from": "2026-07-22T10:00:00+00:00",
+          "confidence": 0.9
+        },
+        {
+          "relation_id": "r2",
+          "subject_id": "project",
+          "predicate": "uses_service",
+          "object_id": "server-b",
+          "source_id": "runtime",
+          "valid_from": "2026-07-22T10:00:00+00:00",
+          "confidence": 0.9
+        }
+      ],
+      "expect": {
+        "projection_excludes": [
+          "世界关系"
+        ],
+        "uncertainties_contains": [
+          "关系冲突:project.uses_service"
+        ]
+      }
+    },
+    {
+      "id": "question-no-evidence",
+      "category": "question",
+      "entities": [
+        {
+          "entity_id": "project",
+          "entity_type": "software",
+          "name": "HutaoChatCore"
+        }
+      ],
+      "expect": {
+        "admitted_unknown": true
+      }
+    },
+    {
+      "id": "question-conflict-evidence",
+      "category": "question",
+      "facts": [
+        {
+          "fact_id": "f1",
+          "key": "weather.440100.temperature_c",
+          "value": "30",
+          "source_id": "amap"
+        }
+      ],
+      "incoming_facts": [
+        {
+          "fact_id": "f2",
+          "key": "weather.440100.temperature_c",
+          "value": "22",
+          "source_id": "qweather"
+        }
+      ],
+      "expect": {
+        "fact_keys_excluded": [
+          "weather.440100.temperature_c"
+        ],
+        "fact_uncertainty_contains": [
+          "cognitive_fact_conflict:weather.440100.temperature_c"
+        ]
+      }
+    }
+  ]
+}

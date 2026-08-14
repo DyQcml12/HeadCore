@@ -9,6 +9,8 @@ from .integration import capabilities_from_channel, response_bundle_to_channel_r
 from .models import DeliveryContext, ResponseBundle
 from .planner import ExpressionPlanner, ExpressionRequest
 
+STREAM_TRUNCATED_MARKER = "\uE000stream-truncated\uE001"
+
 
 def plan_core_api_text(text: str) -> ResponseBundle:
     channel_capabilities = capabilities_for(ChannelPlatform.CORE_API)
@@ -36,7 +38,9 @@ def normalize_core_api_text(text: str) -> str:
 
 async def stream_core_api_text(chunks: AsyncIterable[str]) -> AsyncIterator[str]:
     async for chunk in chunks:
-        if chunk.strip():
+        if chunk == STREAM_TRUNCATED_MARKER:
+            yield chunk
+        elif chunk.strip():
             yield normalize_core_api_text(chunk)
         else:
             yield chunk

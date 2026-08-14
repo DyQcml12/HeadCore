@@ -52,6 +52,19 @@ def should_request_voice_reply(text: str) -> bool:
     return False
 
 
+def _prefer_explicit(
+    explicit_value: int | float,
+    segment_value: int | float | None,
+    default: int | float,
+) -> int | float:
+    """Use a caller-passed value when it differs from the default, else the planned one."""
+    if explicit_value != default:
+        return explicit_value
+    if segment_value is None:
+        return explicit_value
+    return segment_value
+
+
 def synthesize_voice_reply(
     *,
     user_input: str,
@@ -91,14 +104,30 @@ def synthesize_voice_reply(
         segment_path = output_dir / f"{segment_stem}.wav"
         segment_paths.append(segment_path)
         if normalized_provider == "gpt_sovits":
-            synthesize_gpt_sovits(base_url=base_url, text=segment.text, output_path=segment_path,
-                ref_audio_path=gpt_sovits_ref_audio_path, prompt_text=gpt_sovits_prompt_text,
-                prompt_lang=gpt_sovits_prompt_lang, text_lang=gpt_sovits_text_lang, top_k=gpt_sovits_top_k,
-                top_p=gpt_sovits_top_p, temperature=gpt_sovits_temperature,
-                repetition_penalty=gpt_sovits_repetition_penalty, speed_factor=gpt_sovits_speed_factor,
-                fragment_interval=gpt_sovits_fragment_interval, text_split_method=gpt_sovits_text_split_method,
-                batch_size=gpt_sovits_batch_size, seed=gpt_sovits_seed,
-                parallel_infer=gpt_sovits_parallel_infer, timeout_seconds=timeout_seconds)
+            reference = segment.reference
+            segment_params = dict(segment.generation_params)
+            synthesize_gpt_sovits(
+                base_url=base_url,
+                text=segment.text,
+                output_path=segment_path,
+                ref_audio_path=gpt_sovits_ref_audio_path or reference.audio_path,
+                prompt_text=gpt_sovits_prompt_text or reference.prompt_text,
+                prompt_lang=gpt_sovits_prompt_lang,
+                text_lang=gpt_sovits_text_lang,
+                top_k=_prefer_explicit(gpt_sovits_top_k, segment_params.get("top_k"), 15),
+                top_p=_prefer_explicit(gpt_sovits_top_p, segment_params.get("top_p"), 0.85),
+                temperature=_prefer_explicit(gpt_sovits_temperature, segment_params.get("temperature"), 0.70),
+                repetition_penalty=_prefer_explicit(
+                    gpt_sovits_repetition_penalty, segment_params.get("repetition_penalty"), 1.20
+                ),
+                speed_factor=_prefer_explicit(gpt_sovits_speed_factor, segment_params.get("speed_factor"), 0.93),
+                fragment_interval=gpt_sovits_fragment_interval,
+                text_split_method=gpt_sovits_text_split_method,
+                batch_size=gpt_sovits_batch_size,
+                seed=gpt_sovits_seed,
+                parallel_infer=gpt_sovits_parallel_infer,
+                timeout_seconds=timeout_seconds,
+            )
         else:
             raise ValueError(f"Unsupported voice provider: {provider}")
     if len(segment_paths) == 1:

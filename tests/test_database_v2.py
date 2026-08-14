@@ -533,6 +533,7 @@ def test_database_v2_migration_discovery_and_split() -> None:
         "v2.004_public_web_auth",
         "v2.005_public_web_password_reset",
         "v2.006_semantic_memory_outbox",
+        "v2.007_public_web_code_limits",
     ]
     assert DATABASE_V2_SCHEMA_VERSION == "v2.001_hutao_chat_core_schema"
     assert "hutao_chat_core" in DATABASE_V2_SCHEMA_DESCRIPTION

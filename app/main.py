@@ -1,7 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
+import sys
+
+if sys.platform == "win32":
+    # psycopg async needs a selector-based loop (add_reader); uvicorn's default
+    # ProactorEventLoop on Windows cannot support it. Set the policy before any
+    # loop is created so `python -m app.main` and every programmatic start work.
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 from collections.abc import AsyncIterable, AsyncIterator
 from pathlib import Path
 
@@ -613,7 +621,15 @@ def _core_api_channel_event(request: ChatRequest) -> ChannelEvent:
     return CoreApiEventAdapter().adapt(request)
 
 
+def _web_chat_uses_postgres() -> bool:
+    return settings.storage_backend.strip().lower() in {"postgres", "postgresql"}
+
+
 def _should_use_database_v2_chat_storage(request: ChatRequest) -> bool:
+    # Dual-track: PostgreSQL owns web chat history/memories when selected as the
+    # storage backend; Database V2 (MySQL) keeps the identity/profile layer only.
+    if _web_chat_uses_postgres():
+        return False
     return should_use_database_v2(
         settings,
         platform=request.platform,
@@ -627,6 +643,8 @@ def _should_use_database_v2_chat_storage(request: ChatRequest) -> bool:
 
 
 def _authenticated_profile_repository() -> ChatRepository:
+    if _web_chat_uses_postgres():
+        return create_chat_repository(settings)
     if public_web_auth_configured and public_web_auth_uses_database_v2_profiles:
         return build_database_v2_chat_repository(settings)
     return create_chat_repository(settings)
@@ -781,7 +799,9 @@ async def audio_chat_file_endpoint(
         )
         runtime = (
             build_head_runtime(repository=build_database_v2_chat_repository(settings))
-            if public_web_auth_configured and public_web_auth_uses_database_v2_profiles
+            if public_web_auth_configured
+            and public_web_auth_uses_database_v2_profiles
+            and not _web_chat_uses_postgres()
             else build_head_runtime()
         )
         chat_response = await runtime.handle(
@@ -960,3 +980,14 @@ app.include_router(
         _resolve_sandbox_persona_owner,
     )
 )
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        app,
+        host=os.environ.get("HOST", "127.0.0.1"),
+        port=int(os.environ.get("PORT", "8000")),
+        loop="app.loop_factory:selector_loop_factory",
+    )

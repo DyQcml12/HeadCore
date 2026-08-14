@@ -101,10 +101,10 @@ class WorldRuntime:
     async def current_weather(self, location: str) -> WorldAcquisitionResult:
         return await self._service.acquire(
             WorldQuery(
-                source_id="qweather",
+                source_id="amap",
                 capability=WorldSourceCapability.WEATHER_CURRENT,
-                parameters={"location": location},
-                ttl_seconds=self._settings.qweather_weather_cache_ttl_seconds,
+                parameters={"adcode": location},
+                ttl_seconds=self._settings.amap_weather_cache_ttl_seconds,
                 cache_partition="public-weather",
             )
         )
@@ -112,10 +112,10 @@ class WorldRuntime:
     async def weather_forecast(self, location: str) -> WorldAcquisitionResult:
         return await self._service.acquire(
             WorldQuery(
-                source_id="qweather",
+                source_id="amap",
                 capability=WorldSourceCapability.WEATHER_FORECAST,
-                parameters={"location": location},
-                ttl_seconds=self._settings.qweather_weather_cache_ttl_seconds,
+                parameters={"adcode": location},
+                ttl_seconds=self._settings.amap_weather_cache_ttl_seconds,
                 cache_partition="public-weather",
             )
         )

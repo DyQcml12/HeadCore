@@ -4,12 +4,27 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.auth.service import AccountProfile, StoredSession, WebUser
-from app.auth.registration import PendingWebUser
+from app.auth.registration import PendingWebUser, RegistrationError
 from app.auth.rate_limit import RateLimitState
 from app.auth.audit import AuthAuditEvent
 from app.storage.chat_repository import new_uuid
 from app.storage.mysql_repository import mysql_datetime
 from app.storage.v2_mysql_repository import MySQLDatabaseV2Repository
+
+
+def _is_duplicate_email_violation(exc: Exception) -> bool:
+    """True when the error is a unique-key violation on the web_users email index."""
+    try:
+        from asyncmy.errors import IntegrityError as MysqlIntegrityError
+    except ImportError:  # pragma: no cover - asyncmy is a hard runtime dependency
+        MysqlIntegrityError = None  # type: ignore[assignment]
+    if MysqlIntegrityError is not None and isinstance(exc, MysqlIntegrityError):
+        return bool(exc.args) and exc.args[0] == 1062
+    try:
+        import psycopg.errors
+    except ImportError:  # pragma: no cover - optional PostgreSQL transport
+        return False
+    return isinstance(exc, psycopg.errors.UniqueViolation) and "web_users" in str(exc)
 
 
 class MySQLAuthRepository(MySQLDatabaseV2Repository):
@@ -137,8 +152,10 @@ class MySQLAuthRepository(MySQLDatabaseV2Repository):
                 ),
             )
             await connection.commit()
-        except Exception:
+        except Exception as exc:
             await connection.rollback()
+            if _is_duplicate_email_violation(exc):
+                raise RegistrationError("email already registered") from exc
             raise
         finally:
             close_result = cursor.close()

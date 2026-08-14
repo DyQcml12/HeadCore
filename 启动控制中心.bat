@@ -52,7 +52,13 @@ if !ERRORLEVEL! EQU 0 (
     exit /b 0
 )
 
-"%PYTHON_EXE%" -m uvicorn app.main:app --host %HOST% --port %PORT%
+rem Local dev SMTP sink for email verification (only when .env targets it).
+findstr /b /c:"SMTP_HOST=127.0.0.1" ".env" >nul 2>&1
+if !ERRORLEVEL! EQU 0 (
+    powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "if (-not (Get-NetTCPConnection -LocalPort 1025 -State Listen -ErrorAction SilentlyContinue)) { Start-Process -WindowStyle Hidden -FilePath '%PYTHON_EXE%' -ArgumentList 'scriptsdev_smtp_sink.py' -WorkingDirectory '%PROJECT_DIR%' }"
+)
+
+"%PYTHON_EXE%" -m app.main
 
 echo.
 echo HutaoChatCore control center stopped.

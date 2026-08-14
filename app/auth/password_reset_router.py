@@ -31,6 +31,7 @@ class PasswordResetCompletedResponse(BaseModel):
 def create_password_reset_router(
     service: PasswordResetService,
     rate_limiter: AuthRateLimitService | None = None,
+    confirm_rate_limiter: AuthRateLimitService | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -55,7 +56,11 @@ def create_password_reset_router(
         request: PasswordResetConfirmation,
     ) -> PasswordResetCompletedResponse:
         try:
+            if confirm_rate_limiter is not None:
+                await confirm_rate_limiter.enforce(subject_kind="password_reset_code", subject="global")
             await service.confirm(token=request.token, password=request.password)
+        except RateLimitError as exc:
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="try again later") from exc
         except PasswordResetError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         return PasswordResetCompletedResponse()

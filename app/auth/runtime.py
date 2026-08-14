@@ -28,16 +28,47 @@ class PublicWebAuthRuntime:
     database_v2_profile_source: bool = False
 
 
-def configure_public_web_auth(app: FastAPI, settings: Settings) -> PublicWebAuthRuntime:
+def _resolve_web_auth_backend(settings: Settings) -> str:
     backend = settings.storage_backend.strip().lower()
+    postgres_selected = backend in {"postgres", "postgresql"}
+    mysql_v2_selected = settings.database_v2_enabled
+    postgres_ready = postgres_selected and postgres_is_configured(settings)
+    mysql_v2_ready = mysql_v2_selected and all(
+        (settings.mysql_database, settings.mysql_user, settings.mysql_password)
+    )
+    if settings.public_web_auth_enabled:
+        if postgres_selected and not postgres_ready:
+            raise RuntimeError(
+                "PUBLIC_WEB_AUTH_ENABLED=true with STORAGE_BACKEND=postgresql requires "
+                "complete POSTGRES_DATABASE/POSTGRES_USER/POSTGRES_PASSWORD settings"
+            )
+        if mysql_v2_selected and not mysql_v2_ready:
+            raise RuntimeError(
+                "PUBLIC_WEB_AUTH_ENABLED=true with DATABASE_V2_ENABLED=true requires "
+                "complete MYSQL_DATABASE/MYSQL_USER/MYSQL_PASSWORD settings"
+            )
+        if not postgres_selected and not mysql_v2_selected:
+            raise RuntimeError(
+                "PUBLIC_WEB_AUTH_ENABLED=true requires one web auth primary store: "
+                "set STORAGE_BACKEND=postgresql or DATABASE_V2_ENABLED=true"
+            )
+    # Both stores may run together: PostgreSQL owns chat history/memories while
+    # Database V2 (MySQL) owns web accounts and profiles. When both are ready the
+    # web auth primary store is deterministically mysql_v2 (the identity layer).
+    if mysql_v2_ready:
+        return "mysql_v2"
+    if postgres_ready:
+        return "postgres"
+    return "none"
+
+
+def configure_public_web_auth(app: FastAPI, settings: Settings) -> PublicWebAuthRuntime:
+    backend = _resolve_web_auth_backend(settings)
     repository = None
     database_v2_profile_source = False
-    if backend in {"postgres", "postgresql"} and postgres_is_configured(settings):
+    if backend == "postgres":
         repository = PostgreSQLAuthRepository(settings)
-    elif (
-        settings.database_v2_enabled
-        and all((settings.mysql_database, settings.mysql_user, settings.mysql_password))
-    ):
+    elif backend == "mysql_v2":
         repository = MySQLAuthRepository(settings)
         database_v2_profile_source = True
 
@@ -92,12 +123,14 @@ def configure_public_web_auth(app: FastAPI, settings: Settings) -> PublicWebAuth
             RegistrationService(repository),
             delivery,
             AuthRateLimitService(repository),
+            verify_rate_limiter=AuthRateLimitService(repository, limit=30),
         )
     )
     app.include_router(
         create_password_reset_router(
             PasswordResetService(repository, delivery, audit_sink=repository),
             AuthRateLimitService(repository),
+            confirm_rate_limiter=AuthRateLimitService(repository, limit=30),
         )
     )
     return PublicWebAuthRuntime(

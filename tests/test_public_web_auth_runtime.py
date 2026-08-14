@@ -4,6 +4,7 @@ import importlib
 import importlib.util
 from dataclasses import replace
 
+import pytest
 from fastapi import FastAPI
 
 from app.core.config import load_settings
@@ -52,6 +53,84 @@ def test_public_auth_runtime_does_not_mount_registration_or_reset_without_email_
     assert "/api/v1/auth/register" not in route_paths(app)
     assert "/api/v1/auth/password-reset/request" not in route_paths(app)
     assert "/api/v1/auth/password-reset/confirm" not in route_paths(app)
+
+
+def test_web_auth_picks_mysql_v2_primary_when_both_stores_are_ready() -> None:
+    module = public_auth_runtime_module()
+    app = FastAPI()
+
+    runtime = module.configure_public_web_auth(
+        app,
+        replace(
+            configured_settings(email_delivery_enabled=False),
+            storage_backend="postgresql",
+            postgres_database="test_db",
+            postgres_user="test_user",
+            postgres_password="test_password",
+        ),
+    )
+
+    # PostgreSQL keeps chat history/memories; Database V2 (MySQL) is the
+    # deterministic web auth primary store when both are ready.
+    assert runtime.authentication_enabled is True
+    assert runtime.database_v2_profile_source is True
+    assert "/api/v1/auth/login" in route_paths(app)
+
+
+def test_web_auth_picks_postgres_primary_when_only_postgres_is_ready() -> None:
+    module = public_auth_runtime_module()
+    app = FastAPI()
+
+    runtime = module.configure_public_web_auth(
+        app,
+        replace(
+            load_settings(),
+            public_web_auth_enabled=True,
+            database_v2_enabled=False,
+            mysql_database="",
+            mysql_user="",
+            mysql_password="",
+            storage_backend="postgresql",
+            postgres_database="test_db",
+            postgres_user="test_user",
+            postgres_password="test_password",
+            email_delivery_enabled=False,
+        ),
+    )
+
+    assert runtime.authentication_enabled is True
+    assert runtime.database_v2_profile_source is False
+    assert "/api/v1/auth/login" in route_paths(app)
+
+
+def test_web_auth_rejects_when_no_primary_store_is_selected() -> None:
+    module = public_auth_runtime_module()
+
+    with pytest.raises(RuntimeError, match="requires one web auth primary store"):
+        module.configure_public_web_auth(
+            FastAPI(),
+            replace(
+                configured_settings(email_delivery_enabled=False),
+                database_v2_enabled=False,
+                storage_backend="jsonl",
+            ),
+        )
+
+
+def test_web_auth_rejects_incomplete_primary_store() -> None:
+    module = public_auth_runtime_module()
+
+    with pytest.raises(RuntimeError, match="MYSQL_DATABASE"):
+        module.configure_public_web_auth(
+            FastAPI(),
+            replace(
+                configured_settings(email_delivery_enabled=False),
+                database_v2_enabled=True,
+                mysql_database="",
+                mysql_user="",
+                mysql_password="",
+            ),
+        )
 
 
 def test_public_auth_runtime_mounts_registration_and_reset_after_all_dependencies_are_ready() -> None:

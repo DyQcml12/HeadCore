@@ -12,7 +12,12 @@ from app.head.contracts import (
     WorldEvent,
     WorldRelation,
 )
-from app.head.world_model import build_head_world_model, project_head_world_model
+from app.head.world_model import (
+    DEFAULT_BELIEF_HALF_LIFE,
+    belief_strength,
+    build_head_world_model,
+    project_head_world_model,
+)
 from app.head.world_model_store import load_head_world_model, save_head_world_model
 from app.head.events import load_head_event_context
 from app.storage.chat_repository import JsonlChatRepository
@@ -211,6 +216,76 @@ def test_world_model_persists_and_restores_through_head_event_context(tmp_path) 
     assert restored.entities == model.entities
     assert context.world_model.entities == model.entities
     assert other_user.entities == ()
+
+
+def test_belief_strength_decays_exponentially_and_reproducibly() -> None:
+    since = dt.datetime(2026, 6, 22, 12, tzinfo=dt.UTC)
+    now = dt.datetime(2026, 7, 22, 12, tzinfo=dt.UTC)
+
+    assert belief_strength(0.9, since_at=since, now=now) == pytest.approx(0.45)
+    assert belief_strength(0.9, since_at=now, now=now) == 0.9
+    assert belief_strength(0.9, since_at=now, now=now - dt.timedelta(days=1)) == 0.9
+    assert belief_strength(0.9, since_at=since, now=now) == belief_strength(
+        0.9, since_at=since, now=now
+    )
+
+
+def test_stale_relation_enters_uncertainty_and_leaves_projection() -> None:
+    old_relation = WorldRelation(
+        relation_id="old-r",
+        subject_id="project",
+        predicate="uses_service",
+        object_id="server-a",
+        source_id="runtime",
+        valid_from="2026-02-20T10:00:00+00:00",
+        valid_until=None,
+        confidence=0.9,
+    )
+    model = build_head_world_model(
+        entities=ENTITIES,
+        relations=(old_relation, relation("fresh-r", "server-a")),
+        now=NOW,
+    )
+
+    assert "world_relation_stale:old-r" in model.uncertainties
+    projection = project_head_world_model(model, now=NOW)
+    assert all("旧" not in value for value in projection)
+    assert any("uses_service" in value for value in projection)
+    assert len(projection) == 1
+
+
+def test_projection_orders_fresh_relation_before_aging_relation() -> None:
+    aging_relation = WorldRelation(
+        relation_id="aging-r",
+        subject_id="project",
+        predicate="uses_service",
+        object_id="server-a",
+        source_id="runtime",
+        valid_from="2026-07-01T10:00:00+00:00",
+        valid_until=None,
+        confidence=0.9,
+    )
+    fresh_relation = WorldRelation(
+        relation_id="fresh-r",
+        subject_id="project",
+        predicate="uses_service",
+        object_id="server-a",
+        source_id="runtime",
+        valid_from="2026-07-22T11:00:00+00:00",
+        valid_until=None,
+        confidence=0.6,
+    )
+    model = build_head_world_model(
+        entities=ENTITIES,
+        relations=(aging_relation, fresh_relation),
+        now=NOW,
+    )
+
+    projection = project_head_world_model(model, now=NOW)
+
+    assert "confidence=0.60" in projection[0]
+    assert "confidence=0.90" in projection[1]
+    assert projection == project_head_world_model(model, now=NOW)
 
 
 def test_world_model_write_policy_can_disable_persistence(tmp_path) -> None:
