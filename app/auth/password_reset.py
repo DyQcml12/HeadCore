@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from secrets import token_urlsafe
 from typing import Protocol
+
+from app.auth.codes import new_six_digit_code
 
 from app.auth.audit import AuthAuditEvent, AuthAuditSink
 from app.auth.passwords import PasswordPolicyError, hash_password
@@ -65,7 +66,7 @@ class PasswordResetService:
         if user is None or user.status != "active":
             await self._audit("password_reset_requested", "accepted", "generic_response", None)
             return
-        token = token_urlsafe(32)
+        token = new_six_digit_code()
         expires_at = timestamp + self._token_lifetime
         await self._repository.create_password_reset_token(
             user_id=user.id,

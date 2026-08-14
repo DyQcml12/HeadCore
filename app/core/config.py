@@ -67,6 +67,10 @@ class Settings:
     semantic_memory_retrieval_limit: int = 8
     semantic_memory_min_score: float = 0.35
     text_provider_order: str = "deepseek"
+    text_stream_ttft_timeout_seconds: float = 20.0
+    text_stream_total_budget_seconds: float = 90.0
+    recent_context_max_messages: int = 8
+    recent_context_max_chars: int = 80
     text_provider_retries: int = 0
     text_provider_circuit_failure_threshold: int = 3
     text_provider_circuit_recovery_seconds: float = 60.0
@@ -300,6 +304,18 @@ def load_settings() -> Settings:
             get_setting("MODEL_PROVIDER", env_values, "deepseek"),
         ),
         text_provider_retries=int(get_setting("TEXT_PROVIDER_RETRIES", env_values, "0")),
+        text_stream_ttft_timeout_seconds=float(
+            get_setting("TEXT_STREAM_TTFT_TIMEOUT_SECONDS", env_values, "20")
+        ),
+        text_stream_total_budget_seconds=float(
+            get_setting("TEXT_STREAM_TOTAL_BUDGET_SECONDS", env_values, "90")
+        ),
+        recent_context_max_messages=int(
+            get_setting("RECENT_CONTEXT_MAX_MESSAGES", env_values, "8")
+        ),
+        recent_context_max_chars=int(
+            get_setting("RECENT_CONTEXT_MAX_CHARS", env_values, "80")
+        ),
         text_provider_circuit_failure_threshold=int(
             get_setting("TEXT_PROVIDER_CIRCUIT_FAILURE_THRESHOLD", env_values, "3")
         ),

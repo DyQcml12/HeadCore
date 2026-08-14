@@ -58,7 +58,7 @@ Web Desk / PWA / 后续 App
 | 能力 | 实现 | 数据源/模型类型 | 触发与限制 |
 | --- | --- | --- | --- |
 | 行政区、地点、路线 | `app/world/adapters/amap.py` | 高德 Web Service API，不是模型 | 路线属于精确位置能力，必须由明确路线请求和同意触发。 |
-| 当前天气、预报 | `app/world/adapters/qweather.py` | 和风天气 API，不是模型 | 必须启用、配置 API Key、确认许可；地点不清楚时请求确认。 |
+| 当前天气、预报 | `app/world/adapters/amap.py`（weatherInfo，默认路由），`qweather.py` 保留备选 | 高德天气 API，不是模型 | 必须启用、配置 API Key、确认许可；地点不清楚时请求确认。 |
 | 新闻摘要 | `app/world/adapters/news.py`、`news_digest.py` | GDELT、官方 RSS 等信息源，不是模型 | 来源逐项启用和许可批准；不抓取不受控全文。 |
 | 政策更新 | `GovCnPolicyAdapter` | 政府公开元数据源，不是模型 | 默认受许可与启用开关约束，保留来源 URL 和时间。 |
 | 事实整理与冲突提示 | `app/world/context.py` | 确定性规则，不是生成模型 | 限制条目数、字符数、过期数据和来源；检测天气等冲突。 |
@@ -81,7 +81,7 @@ Web Desk / PWA / 后续 App
 ### 5.3 世界数据工具
 
 - 高德：地图、行政区、地点、路线。
-- 和风天气：当前天气和天气预报。
+- 高德天气（weatherInfo）：当前天气和天气预报，为默认路由；和风天气适配器保留为备选。
 - GDELT、联合国/WHO RSS、政府政策元数据：候选新闻/政策证据源。
 
 API Key 只留在 `.env` 和适配器内；不得写入前端、文档、日志、缓存键或聊天记录。

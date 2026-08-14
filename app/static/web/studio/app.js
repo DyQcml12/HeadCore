@@ -116,6 +116,8 @@ async function jsonFetch(url, options = {}) {
   return data;
 }
 
+const STREAM_TRUNCATED_MARKER = "\uE000stream-truncated\uE001";
+
 async function streamTextFetch(url, options, onChunk) {
   const headers = new Headers(options.headers || {});
   const token = csrfToken();
@@ -131,20 +133,24 @@ async function streamTextFetch(url, options, onChunk) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let text = "";
+  let interrupted = false;
+  const accept = (raw) => {
+    let chunk = raw;
+    if (chunk.includes(STREAM_TRUNCATED_MARKER)) {
+      interrupted = true;
+      chunk = chunk.split(STREAM_TRUNCATED_MARKER).join("");
+    }
+    if (!chunk) return;
+    text += chunk;
+    onChunk(chunk, text);
+  };
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
-    const chunk = decoder.decode(value, { stream: true });
-    if (!chunk) continue;
-    text += chunk;
-    onChunk(chunk, text);
+    accept(decoder.decode(value, { stream: true }));
   }
-  const tail = decoder.decode();
-  if (tail) {
-    text += tail;
-    onChunk(tail, text);
-  }
-  return { text, replyId: response.headers.get("X-Hutao-Reply-Id") };
+  accept(decoder.decode());
+  return { text, replyId: response.headers.get("X-Hutao-Reply-Id"), interrupted };
 }
 
 function messageTime() {
@@ -346,6 +352,13 @@ async function sendChat(text, inputSource = "text") {
     if (!responseMessage) {
       finishThinkingStatus(thinking);
       responseMessage = addMessage("assistant", reply.text || "当前没有生成可显示的回复。");
+    }
+    if (reply.interrupted) {
+      const note = document.createElement("div");
+      note.className = "message-stream-note";
+      note.textContent = "回复在生成中途被截断，以上是已生成的部分内容。";
+      responseMessage.append(note);
+      toast("回复中途中断，仅显示部分内容。", true);
     }
     attachReplyVoiceControl(responseMessage, reply.replyId, reply.text);
   } catch (error) {

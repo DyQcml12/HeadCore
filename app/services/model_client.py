@@ -101,14 +101,21 @@ class DeepSeekClient:
             return ""
         try:
             data = json.loads(payload)
-        except json.JSONDecodeError:
-            return ""
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("model stream sent a non-JSON data frame") from exc
+        if not isinstance(data, dict):
+            raise RuntimeError("model stream sent a non-object data frame")
+        if "error" in data:
+            raise RuntimeError(
+                "model stream returned an error frame: "
+                + redact_secrets(str(data.get("error")))[:600]
+            )
         choices = data.get("choices")
         if not isinstance(choices, list) or not choices:
-            return ""
+            raise RuntimeError("model stream data frame has no choices")
         first = choices[0]
         if not isinstance(first, dict):
-            return ""
+            raise RuntimeError("model stream choice is not an object")
         delta = first.get("delta")
         if not isinstance(delta, dict):
             return ""

@@ -34,6 +34,7 @@ def create_registration_router(
     service: RegistrationService,
     delivery: EmailVerificationDelivery,
     rate_limiter: AuthRateLimitService | None = None,
+    verify_rate_limiter: AuthRateLimitService | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -61,7 +62,11 @@ def create_registration_router(
     @router.post("/verify-email", response_model=VerifiedResponse)
     async def verify_email(request: EmailVerificationRequest) -> VerifiedResponse:
         try:
+            if verify_rate_limiter is not None:
+                await verify_rate_limiter.enforce(subject_kind="verification_code", subject="global")
             await service.verify_email(token=request.token)
+        except RateLimitError as exc:
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="try again later") from exc
         except RegistrationError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         return VerifiedResponse()

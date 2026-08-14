@@ -13,15 +13,15 @@ _PASSWORD_HASHER = PasswordHasher(time_cost=3, memory_cost=65_536, parallelism=2
 
 def validate_password(password: str) -> None:
     if len(password) < 12:
-        raise PasswordPolicyError("password must contain at least 12 characters")
+        raise PasswordPolicyError("密码至少需要 12 个字符（password must contain at least 12 characters）")
     if not any(character.islower() for character in password):
-        raise PasswordPolicyError("password must contain a lowercase letter")
+        raise PasswordPolicyError("密码需要包含小写字母（password must contain a lowercase letter）")
     if not any(character.isupper() for character in password):
-        raise PasswordPolicyError("password must contain an uppercase letter")
+        raise PasswordPolicyError("密码需要包含大写字母（password must contain an uppercase letter）")
     if not any(character.isdigit() for character in password):
-        raise PasswordPolicyError("password must contain a number")
+        raise PasswordPolicyError("密码需要包含数字（password must contain a number）")
     if not any(not character.isalnum() and not character.isspace() for character in password):
-        raise PasswordPolicyError("password must contain a symbol")
+        raise PasswordPolicyError("密码需要包含符号（password must contain a symbol）")
 
 
 def hash_password(password: str) -> str:

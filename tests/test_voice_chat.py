@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from app.voice_chat.audio_utils import trim_wav_start
-from app.voice_chat.planner import VoiceReference
+from app.voice_chat.planner import GENERATION_PRESETS, VoiceReference, infer_reply_emotion
 from app.voice_chat.naturalness import constrain_reply_for_realtime_tts
 from app.voice_chat.naturalness import normalize_text_for_tts
 from app.voice_chat.tts_service import synthesize_voice_reply
@@ -85,5 +85,46 @@ def test_synthesize_voice_reply_uses_gpt_sovits_provider(monkeypatch, tmp_path: 
         gpt_sovits_ref_audio_path=str(reference), gpt_sovits_prompt_text="呀，是旅行者和派蒙啊。",
     )
     assert calls[0]["base_url"] == "http://127.0.0.1:9880"
-    assert calls[0]["top_p"] == 0.85
+    assert calls[0]["ref_audio_path"] == str(reference)
+    assert calls[0]["prompt_text"] == "呀，是旅行者和派蒙啊。"
+    emotion, _, _ = infer_reply_emotion(user_input="用语音说一句", reply_text="欸，我在啦。")
+    assert calls[0]["top_p"] == GENERATION_PRESETS[emotion]["top_p"]
     assert result.send_path.suffix == ".mp3"
+
+
+def test_synthesize_voice_reply_uses_planned_reference_when_not_explicit(
+    monkeypatch, tmp_path: Path
+) -> None:
+    calls: list[dict[str, object]] = []
+    planned_audio = tmp_path / "planned.wav"
+    planned_audio.write_bytes(b"planned")
+
+    def fake_synthesize_gpt_sovits(**kwargs) -> int:
+        calls.append(kwargs)
+        Path(kwargs["output_path"]).write_bytes(b"RIFF" + b"x" * 64)
+        return 68
+
+    monkeypatch.setattr(
+        "app.voice_chat.planner.load_reference_library",
+        lambda: defaultdict(
+            lambda: VoiceReference("neutral", "planned-ref", str(planned_audio), "计划里的提示文本"),
+        ),
+    )
+    monkeypatch.setattr("app.voice_chat.tts_service.synthesize_gpt_sovits", fake_synthesize_gpt_sovits)
+    monkeypatch.setattr(
+        "app.voice_chat.tts_service.convert_audio_for_delivery",
+        lambda **kwargs: kwargs["output_path"].write_bytes(b"mp3"),
+    )
+
+    synthesize_voice_reply(
+        user_input="用语音说一句",
+        reply_text="欸，我在啦。",
+        output_dir=tmp_path,
+        base_url="http://127.0.0.1:9880",
+        provider="gpt_sovits",
+    )
+
+    assert calls[0]["ref_audio_path"] == str(planned_audio)
+    assert calls[0]["prompt_text"] == "计划里的提示文本"
+    emotion, _, _ = infer_reply_emotion(user_input="用语音说一句", reply_text="欸，我在啦。")
+    assert calls[0]["top_k"] == GENERATION_PRESETS[emotion]["top_k"]

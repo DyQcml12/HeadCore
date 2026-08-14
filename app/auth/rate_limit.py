@@ -32,10 +32,60 @@ class RateLimitRepository(Protocol):
     ) -> RateLimitState: ...
 
 
+class InMemoryRateLimitRepository:
+    """Single-process rate limit fallback and test double.
+
+    Used when no database repository is available (or in tests). State is
+    process-local: it is NOT a shared limiter for multi-instance deployments,
+    which must provide a database or Redis-backed repository instead.
+    """
+
+    def __init__(self, *, max_entries: int = 10_000) -> None:
+        if max_entries < 1:
+            raise ValueError("max_entries must be positive")
+        self._max_entries = max_entries
+        self._attempts: dict[tuple[str, str], dict[str, int]] = {}
+        self._blocked_until: dict[tuple[str, str], datetime] = {}
+
+    async def record_attempt(
+        self,
+        *,
+        subject_kind: RateLimitSubjectKind,
+        subject_hash: str,
+        window_started_at: datetime,
+        now: datetime,
+        limit: int,
+        blocked_until: datetime,
+    ) -> RateLimitState:
+        self._purge_expired(now)
+        key = (subject_kind, subject_hash)
+        window_key = window_started_at.isoformat()
+        windows = self._attempts.setdefault(key, {})
+        if windows.get(window_key) is None:
+            windows.clear()
+        count = windows.get(window_key, 0) + 1
+        windows[window_key] = count
+        if len(self._attempts) > self._max_entries:
+            self._attempts.pop(next(iter(self._attempts)))
+        existing_block = self._blocked_until.get(key)
+        if existing_block is not None and existing_block > now:
+            return RateLimitState(attempt_count=count, blocked_until=existing_block)
+        if count > limit:
+            self._blocked_until[key] = blocked_until
+            return RateLimitState(attempt_count=count, blocked_until=blocked_until)
+        return RateLimitState(attempt_count=count, blocked_until=None)
+
+    def _purge_expired(self, now: datetime) -> None:
+        expired_blocks = [key for key, value in self._blocked_until.items() if value <= now]
+        for key in expired_blocks:
+            self._blocked_until.pop(key, None)
+            self._attempts.pop(key, None)
+
+
 class AuthRateLimitService:
     def __init__(
         self,
-        repository: RateLimitRepository,
+        repository: RateLimitRepository | None = None,
         *,
         limit: int = 5,
         window: timedelta = timedelta(minutes=10),
@@ -43,7 +93,7 @@ class AuthRateLimitService:
     ) -> None:
         if limit < 1 or window <= timedelta(0) or block_duration <= timedelta(0):
             raise ValueError("rate limit policy must be positive")
-        self._repository = repository
+        self._repository = repository or InMemoryRateLimitRepository()
         self._limit = limit
         self._window = window
         self._block_duration = block_duration

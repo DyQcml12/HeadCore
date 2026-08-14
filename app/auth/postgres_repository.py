@@ -4,9 +4,13 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.auth.audit import AuthAuditEvent
-from app.auth.mysql_repository import MySQLAuthRepository, _as_utc_datetime
+from app.auth.mysql_repository import (
+    MySQLAuthRepository,
+    _as_utc_datetime,
+    _is_duplicate_email_violation,
+)
 from app.auth.rate_limit import RateLimitState
-from app.auth.registration import PendingWebUser
+from app.auth.registration import PendingWebUser, RegistrationError
 from app.auth.service import WebUser
 from app.storage.chat_repository import new_uuid
 from app.storage.mysql_repository import mysql_datetime
@@ -154,8 +158,10 @@ class PostgreSQLAuthRepository(MySQLAuthRepository):
                 ),
             )
             await connection.commit()
-        except Exception:
+        except Exception as exc:
             await connection.rollback()
+            if _is_duplicate_email_violation(exc):
+                raise RegistrationError("email already registered") from exc
             raise
         finally:
             await cursor.close()

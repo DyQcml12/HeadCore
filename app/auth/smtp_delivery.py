@@ -57,7 +57,7 @@ class SmtpEmailVerificationDelivery:
         message["From"] = self._settings.from_address
         message["To"] = email
         message.set_content(
-            "请在 HuTaoChatCore 的邮箱验证页面提交以下验证码：\n\n"
+            "请在 HuTaoChatCore 的邮箱验证页面提交以下 6 位数字验证码：\n\n"
             f"{token}\n\n"
             f"有效期至：{expires_at.isoformat()}\n"
             "请勿将验证码分享给他人。"
@@ -77,10 +77,10 @@ class SmtpEmailVerificationDelivery:
         message["From"] = self._settings.from_address
         message["To"] = email
         message.set_content(
-            "请在 HuTaoChatCore 的重置密码页面提交以下重置令牌：\n\n"
+            "请在 HuTaoChatCore 的重置密码页面提交以下 6 位数字验证码：\n\n"
             f"{token}\n\n"
             f"有效期至：{expires_at.isoformat()}\n"
-            "如果不是你本人发起的请求，请忽略此邮件，且不要将令牌分享给他人。"
+            "如果不是你本人发起的请求，请忽略此邮件，且不要将验证码分享给他人。"
         )
         client = self._smtp_factory(self._settings.host, self._settings.port)
         try:

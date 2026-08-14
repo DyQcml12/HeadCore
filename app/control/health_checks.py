@@ -76,14 +76,12 @@ def check_world_awareness() -> ControlHealthItem:
             "查看世界工具文档",
             "/control/docs/world-model",
         )
-    configured = status.amap_key_configured and status.qweather_key_configured
-    approved = status.amap_legal_approved and status.qweather_legal_approved
+    configured = status.amap_key_configured and status.amap_legal_approved
+    approved = status.amap_legal_approved
     state = "online" if configured and approved else "degraded"
     detail = (
-        f"高德：{'已配置' if status.amap_key_configured else '未配置'} / "
+        f"高德（天气/地点/路线）：{'已配置' if status.amap_key_configured else '未配置'} / "
         f"{'已批准' if status.amap_legal_approved else '未批准'}；"
-        f"和风天气：{'已配置' if status.qweather_key_configured else '未配置'} / "
-        f"{'已批准' if status.qweather_legal_approved else '未批准'}；"
         f"新闻源已启用 {status.news_enabled_count} 个。"
     )
     return ControlHealthItem(
