@@ -1,0 +1,11 @@
+﻿reviewer_id,item_id,scenario_id,user_input,option_a,option_b,selected_option,confidence,notes
+,BR-70456DB8D7,ambiguous-reference,这个怎么做？,直接给出有限、可执行的建议,只追问完成当前请求所需的信息,,,
+,BR-C45A1EF01D,technical-progress,继续优化这个项目的 HeadCore，并检查状态恢复和反馈逻辑,先确认关键歧义，再继续回答,承接当前任务并推进一个明确步骤,,,
+,BR-AD80C9D640,vulnerable-support,我今天真的很难受，脑子里乱成一团,先回应感受，再决定是否追问,直接给出有限、可执行的建议,,,
+,BR-D086DB1FB7,explicit-correction,你理解错了，我说的是先检查接口，不是重写项目,先体现纠正并恢复自然交流,利用已知信息推进一个可验证步骤,,,
+,BR-150EEB54D8,mixed-emotion-advice,我很累，但你直接告诉我这个项目该怎么办,先回应感受，再决定是否追问,直接给出有限、可执行的建议,,,
+,BR-2E62F51CAD,correction-then-task,别演了，继续把这个接口写完,先体现纠正并恢复自然交流,利用已知信息推进一个可验证步骤,,,
+,BR-3D099F23CD,vulnerable-explicit-solution,我很难受，不过请给我一个具体解决方案,先回应感受，再决定是否追问,直接给出有限、可执行的建议,,,
+,BR-6CD56A74D5,no-comfort-debug,先别安慰我，帮我查这个代码报错,承接当前任务并推进一个明确步骤,先确认关键歧义，再继续回答,,,
+,BR-6C4E51CEDD,withdrawal-but-continue,算了，但这个项目还是继续做吧,尊重停止表达，用一句轻确认留出空间；不要断言用户情绪,利用已知信息推进一个可验证步骤,,,
+,BR-8D3DD72333,multi-object-technical,这个接口和那个模型应该怎么组合？,承接当前任务并推进一个明确步骤,先确认关键歧义，再继续回答,,,

@@ -1,0 +1,12 @@
+[
+  {"id":"pref-ambiguous-clarify","scenario_id":"ambiguous-reference","preferred_action":"clarify","rejected_action":"answer","minimum_margin":0.01,"rationale":"缺少指代对象时澄清应优于猜测回答"},
+  {"id":"pref-technical-progress","scenario_id":"technical-progress","preferred_action":"continue_task","rejected_action":"clarify","minimum_margin":0.01,"rationale":"对象明确的活动任务应直接推进"},
+  {"id":"pref-vulnerable-support","scenario_id":"vulnerable-support","preferred_action":"support","rejected_action":"answer","minimum_margin":0.01,"rationale":"脆弱情绪应先支持而不是直接建议"},
+  {"id":"pref-correction-repair","scenario_id":"explicit-correction","preferred_action":"repair","rejected_action":"continue_task","minimum_margin":0.01,"rationale":"接受纠正优先于继续任务"},
+  {"id":"pref-mixed-support","scenario_id":"mixed-emotion-advice","preferred_action":"support","rejected_action":"answer","minimum_margin":0.01,"rationale":"混合意图先接住再提供有限方案"},
+  {"id":"pref-correction-task-repair","scenario_id":"correction-then-task","preferred_action":"repair","rejected_action":"continue_task","minimum_margin":0.01,"rationale":"别演了是明确体验纠正"},
+  {"id":"pref-vulnerable-solution","scenario_id":"vulnerable-explicit-solution","preferred_action":"support","rejected_action":"answer","minimum_margin":0.01,"rationale":"支持行动可包含有限建议但不跳过感受"},
+  {"id":"pref-debug-progress","scenario_id":"no-comfort-debug","preferred_action":"continue_task","rejected_action":"clarify","minimum_margin":0.01,"rationale":"明确代码报错对象应推进排查"},
+  {"id":"pref-withdrawal-task","scenario_id":"withdrawal-but-continue","preferred_action":"continue_task","rejected_action":"support","minimum_margin":0.01,"rationale":"明确继续任务覆盖模糊退缩信号"},
+  {"id":"pref-multi-object","scenario_id":"multi-object-technical","preferred_action":"continue_task","rejected_action":"clarify","minimum_margin":0.01,"rationale":"接口与模型均为明确对象"}
+]

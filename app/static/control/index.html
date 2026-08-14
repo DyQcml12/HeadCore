@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HeadCore 控制台</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/control/style.css?v=20260725-2" />
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand"><span>HC</span><div><strong>HEADCORE</strong><small>Operations Console</small></div></div>
+      <nav aria-label="控制台导航">
+        <a href="#runtime"><b>01</b>核心运行时</a>
+        <a href="#clients"><b>02</b>客户端与发布</a>
+        <a href="#capabilities"><b>03</b>能力服务</a>
+        <a href="#diagnostics"><b>04</b>运行诊断</a>
+      </nav>
+      <p class="side-note">QQ / 微信 Bot 已移除，不再作为运行入口。</p>
+    </aside>
+    <main>
+      <header class="topbar">
+        <div><p class="eyebrow">HEADCORE · MULTI-CLIENT OPERATIONS</p><h1>运行控制台</h1><p>一个 HeadCore，为 Web、PWA 与后续原生客户端提供统一能力。</p></div>
+        <div class="header-action"><span id="lastUpdated">尚未刷新</span><button id="refreshBtn" type="button" aria-label="刷新状态">刷新</button></div>
+      </header>
+      <div id="pageError" role="alert" hidden></div>
+
+      <section id="runtime">
+        <div class="section-head"><div><p class="eyebrow">01 / RUNTIME</p><h2>核心运行时</h2><p>认知主体、模型调用、记忆与权限边界均在 HeadCore 内部。</p></div><span id="overviewState" class="state loading">读取中</span></div>
+        <div id="statusGrid" class="status-grid" aria-live="polite"></div>
+      </section>
+
+      <section id="clients">
+        <div class="section-head"><div><p class="eyebrow">02 / CLIENTS</p><h2>客户端与发布</h2><p>客户端只负责界面和设备能力；人格、记忆、模型与安全决策不复制到端侧。</p></div></div>
+        <div class="client-grid">
+          <article><span>LIVE</span><h3>Web Desk</h3><p>浏览器中的正式用户界面，支持文本、记忆和语音交互。</p><a href="/desk">打开 Desk</a></article>
+          <article><span>LIVE</span><h3>PWA</h3><p>同一 Web Desk 的可安装、可离线启动形态。</p><a href="/desk/manifest.webmanifest">查看清单</a></article>
+          <article><span>PLAN</span><h3>桌面 / 移动 App</h3><p>后续通过同一 API 契约接入，不在控制台启动模拟服务。</p><p class="muted">等待客户端工程建立</p></article>
+          <article><span>PLAN</span><h3>微信小程序</h3><p>作为受限客户端接入 HeadCore，独立审核登录与内容安全。</p><p class="muted">等待小程序工程建立</p></article>
+        </div>
+      </section>
+
+      <section id="capabilities">
+        <div class="section-head"><div><p class="eyebrow">03 / CAPABILITIES</p><h2>能力服务</h2><p>只显示已实现的本地或 API 能力状态，不会在刷新时调用外部模型或世界接口。</p></div></div>
+        <div id="capabilityList" class="capability-list"></div>
+      </section>
+
+      <section id="diagnostics">
+        <div class="section-head"><div><p class="eyebrow">04 / DIAGNOSTICS</p><h2>运行诊断</h2><p>聚合只读组件状态、测试报告与脱敏错误分类。</p></div><span id="operationsOverall" class="state loading">读取中</span></div>
+        <div id="operationsComponents" class="diagnostic-list"></div>
+        <div class="diagnostic-grid"><article><h3>测试报告</h3><div id="operationsReports"></div></article><article><h3>错误分类</h3><div id="operationsErrors"></div></article></div>
+      </section>
+    </main>
+    <script src="/control/app.js?v=20260725-2"></script>
+  </body>
+</html>

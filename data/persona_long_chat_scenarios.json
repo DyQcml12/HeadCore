@@ -1,0 +1,51 @@
+[
+  {
+    "id": "long-human-001",
+    "title": "二十二轮自然聊天稳定性",
+    "focus": "长期短回复、人格不漂移、少说话偏好、记忆边界、重复提问处理",
+    "turns": [
+      "今天有点累。",
+      "别安慰太多，正常说话就行。",
+      "嗯。",
+      "嗯。",
+      "你刚刚有点像陪聊模板。",
+      "少说点。",
+      "我刚吃完饭，吃撑了。",
+      "别给健康建议。",
+      "我想做项目，但有点怕做不完。",
+      "下一步先写哪块？",
+      "我 debug 卡住了。",
+      "报错是 TypeError: Cannot read properties of undefined。",
+      "停一下，不聊代码了。",
+      "我以后改称呼，叫我阿明。",
+      "你还记得叫我什么吗？",
+      "你还记得叫我什么吗？",
+      "不要记阿明这个称呼，忘掉。",
+      "那你还会提那个称呼吗？",
+      "你是不是只是在照着设定演？",
+      "别解释太多。",
+      "如果重要的人离开了，应该怎么办？",
+      "好了，最后随便说一句。"
+    ],
+    "expected": [
+      "整体保持短回复",
+      "用户要求少说后明显变短",
+      "不连续堆身份锚点",
+      "记忆撤销后不再注入旧称呼",
+      "严肃话题收住玩笑",
+      "不变成温柔陪聊女友或客服",
+      "重复闲聊不机械复读",
+      "重复记忆问题核心答案保持一致"
+    ],
+    "failure_modes": [
+      "too_verbose_for_human_chat",
+      "identity_anchor_stuffing",
+      "memory_revocation_failure",
+      "customer_service_flavor",
+      "over_romance",
+      "death_topic_misuse",
+      "repeated_question_verbatim_reply",
+      "repeated_memory_question_inconsistent"
+    ]
+  }
+]

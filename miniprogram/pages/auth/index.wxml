@@ -1,0 +1,62 @@
+<view class="screen">
+  <view class="masthead">
+    <view class="seal">往</view>
+    <text class="eyebrow">WANGSHENG PARLOR</text>
+    <text class="title">璃月胡桃</text>
+    <text class="lead">用自己的账户，留住只属于你的对话与记忆。</text>
+  </view>
+
+  <view wx:if="!ready" class="state-block"><text>正在确认账户服务</text></view>
+  <view wx:elif="!apiConfigured" class="state-block"><text>尚未配置 HTTPS 服务地址</text></view>
+  <view wx:elif="!authEnabled" class="state-block"><text>账户服务尚未开启</text></view>
+
+  <block wx:else>
+    <view class="mode-switch" wx:if="{{mode === 'login' || mode === 'register'}}">
+      <button class="mode-button {{mode === 'login' ? 'active' : ''}}" data-mode="login" bindtap="changeMode">登录</button>
+      <button class="mode-button {{mode === 'register' ? 'active' : ''}}" data-mode="register" bindtap="changeMode">注册</button>
+    </view>
+
+    <form class="auth-form" bindsubmit="submit">
+      <view wx:if="{{notice}}" class="notice">{{notice}}</view>
+
+      <block wx:if="{{mode === 'login'}}">
+        <text class="form-title">欢迎回来</text>
+        <input class="field" name="email" type="text" maxlength="320" placeholder="邮箱" placeholder-class="placeholder" />
+        <input class="field" name="password" password="true" maxlength="512" placeholder="密码" placeholder-class="placeholder" />
+        <button class="submit-button" form-type="submit" loading="{{submitting}}">进入对话</button>
+        <button class="link-button" data-mode="resetRequest" bindtap="changeMode">忘记密码</button>
+      </block>
+
+      <block wx:elif="{{mode === 'register'}}">
+        <text class="form-title">创建账户</text>
+        <input class="field" name="display_name" maxlength="128" placeholder="显示名称" placeholder-class="placeholder" />
+        <input class="field" name="email" type="text" maxlength="320" placeholder="邮箱" placeholder-class="placeholder" />
+        <input class="field" name="password" password="true" maxlength="512" placeholder="至少 12 位的密码" placeholder-class="placeholder" />
+        <text class="password-tip">需包含大小写字母、数字和符号</text>
+        <button class="submit-button" disabled="{{!registrationEnabled}}" form-type="submit" loading="{{submitting}}">发送验证邮件</button>
+      </block>
+
+      <block wx:elif="{{mode === 'verify'}}">
+        <text class="form-title">验证邮箱</text>
+        <input class="field" name="token" maxlength="256" placeholder="邮件中的完整验证码" placeholder-class="placeholder" />
+        <button class="submit-button" form-type="submit" loading="{{submitting}}">确认验证</button>
+        <button class="link-button" data-mode="login" bindtap="changeMode">返回登录</button>
+      </block>
+
+      <block wx:elif="{{mode === 'resetRequest'}}">
+        <text class="form-title">找回密码</text>
+        <input class="field" name="email" type="text" maxlength="320" placeholder="注册邮箱" placeholder-class="placeholder" />
+        <button class="submit-button" disabled="{{!passwordResetEnabled}}" form-type="submit" loading="{{submitting}}">发送重置码</button>
+        <button class="link-button" data-mode="login" bindtap="changeMode">返回登录</button>
+      </block>
+
+      <block wx:else>
+        <text class="form-title">设置新密码</text>
+        <input class="field" name="token" maxlength="256" placeholder="邮件中的完整重置码" placeholder-class="placeholder" />
+        <input class="field" name="password" password="true" maxlength="512" placeholder="至少 12 位的新密码" placeholder-class="placeholder" />
+        <button class="submit-button" disabled="{{!passwordResetEnabled}}" form-type="submit" loading="{{submitting}}">更新密码</button>
+        <button class="link-button" data-mode="login" bindtap="changeMode">返回登录</button>
+      </block>
+    </form>
+  </block>
+</view>

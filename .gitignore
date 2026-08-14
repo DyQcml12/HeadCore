@@ -1,0 +1,50 @@
+﻿# Secrets and deployment-local configuration
+.env
+.env.*
+!.env.example
+deploy/.env.staging
+
+# Runtime state and generated output
+logs/
+tmp/
+artifacts/
+build/
+output/
+data/generated_voice/
+data/qq_audio_cache/
+
+# Data publication allowlist: keep only small, non-personal configuration and
+# evaluation fixtures. Runtime models, audio, training inputs, and generated
+# artifacts remain local.
+#
+data/*
+!data/world/
+data/world/*
+!data/world/sources.json
+!data/head_planning_multi_reviewer_annotations.json
+!data/head_planning_pairwise_preferences.json
+!data/head_planning_scenarios.json
+!data/persona_*.json
+# Large local-only resources
+data/models/
+model_training/
+external/
+node_modules/
+
+
+# Local captures and accidental browser dump files
+auth-current-mobile.png
+desk-current-desktop.png
+innerWidth
+s.src)
+x.disabled).length
+test_localsystem.txt
+
+.DS_Store
+# Tooling and Python caches
+.pytest_cache/
+.playwright-cli/
+.codex-docx-render/
+__pycache__/
+*.py[cod]
+.idea/

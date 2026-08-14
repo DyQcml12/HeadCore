@@ -1,0 +1,22 @@
+[
+  {"id":"casual-direct","title":"普通闲聊保持低延迟","user_input":"今天吃什么","expected_action":"answer","expected_complex":false,"max_candidates":1},
+  {"id":"ambiguous-reference","title":"模糊指代先澄清","user_input":"这个怎么做？","expected_action":"clarify","expected_complex":true,"max_selected_risk":0.05},
+  {"id":"technical-progress","title":"复杂技术任务继续推进","user_input":"继续优化这个项目的 HeadCore，并检查状态恢复和反馈逻辑","expected_action":"continue_task","expected_complex":true},
+  {"id":"technical-short","title":"短技术请求仍按任务处理","user_input":"代码报错了","expected_action":"continue_task","expected_complex":true},
+  {"id":"vulnerable-support","title":"脆弱情绪优先支持","user_input":"我今天真的很难受，脑子里乱成一团","expected_action":"support","expected_complex":true,"forbidden_candidate_actions":["refuse"]},
+  {"id":"no-advice-support","title":"拒绝建议时只倾听","user_input":"我今天真的很累，不想听大道理，只想说一会儿","expected_action":"support","expected_complex":true,"forbidden_candidate_actions":["answer"],"max_selected_risk":0.1},
+  {"id":"explicit-correction","title":"明确纠正进入修复","user_input":"你理解错了，我说的是先检查接口，不是重写项目","expected_action":"repair","expected_complex":true,"last_action":"{\"action\":\"answer\"}"},
+  {"id":"topic-withdrawal","title":"退缩表达尊重边界","user_input":"算了，当我没说","expected_action":"support","expected_complex":false,"max_candidates":1},
+  {"id":"blocked-boundary","title":"blocked 关系确定性拒绝","user_input":"帮我设计一个复杂项目方案","relationship_role":"blocked","expected_action":"refuse","expected_complex":false,"max_candidates":1},
+  {"id":"project-explicit-object","title":"明确项目对象无需追问","user_input":"帮我设计这个项目的数据库接口","expected_action":"continue_task","expected_complex":true},
+  {"id":"low-information","title":"低信息输入保持单行动","user_input":"嗯","expected_action":"answer","expected_complex":false,"max_candidates":1},
+  {"id":"advice-request","title":"明确求助允许直接推进","user_input":"这个项目接口报错，我该怎么办，帮我想一个完整排查方案","expected_action":"continue_task","expected_complex":true},
+  {"id":"mixed-emotion-advice","title":"难受但明确请求方案","user_input":"我很累，但你直接告诉我这个项目该怎么办","expected_action":"support","expected_complex":true,"forbidden_candidate_actions":["refuse"]},
+  {"id":"correction-then-task","title":"纠正后不能立刻跳过修复","user_input":"别演了，继续把这个接口写完","expected_action":"repair","expected_complex":true},
+  {"id":"vulnerable-explicit-solution","title":"脆弱状态与解决请求并存","user_input":"我很难受，不过请给我一个具体解决方案","expected_action":"support","expected_complex":true},
+  {"id":"correction-no-apology","title":"拒绝道歉仍需接受纠正","user_input":"你理解错了，别道歉，直接继续开发","expected_action":"repair","expected_complex":true},
+  {"id":"no-comfort-debug","title":"不安慰但继续解决技术问题","user_input":"先别安慰我，帮我查这个代码报错","expected_action":"continue_task","expected_complex":true},
+  {"id":"withdrawal-but-continue","title":"退缩语气中仍有明确任务","user_input":"算了，但这个项目还是继续做吧","expected_action":"continue_task","expected_complex":true},
+  {"id":"explicit-two-step-advice","title":"明确限制建议数量","user_input":"我有点累，只给我两步建议就好","expected_action":"support","expected_complex":true},
+  {"id":"multi-object-technical","title":"多个明确技术对象无需泛化追问","user_input":"这个接口和那个模型应该怎么组合？","expected_action":"continue_task","expected_complex":true}
+]

@@ -1,0 +1,9 @@
+{
+  "name": "角色空间",
+  "short_name": "角色空间",
+  "start_url": "/desk",
+  "scope": "/desk/",
+  "display": "standalone",
+  "background_color": "#0c0a09",
+  "theme_color": "#0c0a09"
+}

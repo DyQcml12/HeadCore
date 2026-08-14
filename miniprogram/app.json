@@ -1,0 +1,35 @@
+{
+  "pages": [
+    "pages/chat/index",
+    "pages/profile/index",
+    "pages/auth/index"
+  ],
+  "window": {
+    "navigationStyle": "custom",
+    "backgroundColor": "#171113",
+    "backgroundTextStyle": "light",
+    "enablePullDownRefresh": false
+  },
+  "networkTimeout": {
+    "request": 20000,
+    "uploadFile": 30000,
+    "downloadFile": 30000
+  },
+  "tabBar": {
+    "color": "#8a7774",
+    "selectedColor": "#e5a16e",
+    "backgroundColor": "#171113",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/chat/index",
+        "text": "对话"
+      },
+      {
+        "pagePath": "pages/profile/index",
+        "text": "我的"
+      }
+    ]
+  },
+  "style": "v2"
+}

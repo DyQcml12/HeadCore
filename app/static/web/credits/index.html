@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="description" content="HutaoChatCore 的上游项目、模型、资源与许可证透明度登记。" />
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/credits/style.css" />
+    <title>透明度登记册 | HutaoChatCore</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#registry">跳至登记列表</a>
+
+    <main class="credits-shell">
+      <header class="credits-header">
+        <a href="/" class="brand-link" aria-label="返回 HutaoChatCore 首页">
+          <span class="brand-mark" aria-hidden="true">H</span>
+          <span>HutaoChatCore</span>
+        </a>
+        <span class="page-label">
+          <span class="page-label-long">TRANSPARENCY / 透明度</span>
+          <span class="page-label-short">REGISTRY</span>
+        </span>
+      </header>
+
+      <section class="credits-hero" aria-labelledby="creditsTitle">
+        <p class="eyebrow">TRANSPARENCY REGISTRY</p>
+        <h1 id="creditsTitle">透明度登记册</h1>
+        <p class="hero-copy">
+          公开记录项目依赖、设计参考与模型基础的来源、许可证和使用边界，让每一项发布决策都有据可查。
+        </p>
+      </section>
+
+      <aside class="review-note" aria-label="发布审核说明">
+        <strong>发布前复核</strong>
+        <p>受限或待审查条目不得直接进入商业发布物；模型、数据集、角色素材与音乐需分别确认权利边界。</p>
+      </aside>
+
+      <section class="credits-section" id="registry" aria-labelledby="registryTitle">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">REGISTERED SOURCES</p>
+            <h2 id="registryTitle">来源与许可证</h2>
+          </div>
+          <p>持续更新的公开审查清单</p>
+        </div>
+
+        <div class="registry-statbar" aria-live="polite" aria-atomic="true">
+          <div class="registry-count">
+            <strong id="registryCount">--</strong>
+            <span>items registered</span>
+          </div>
+          <span class="registry-state" id="registryStatus">正在读取登记数据</span>
+        </div>
+
+        <div class="registry-list" id="creditsList" aria-busy="true">
+          <p class="registry-loading">正在读取登记数据...</p>
+        </div>
+      </section>
+
+      <section class="credits-section rules-section" aria-labelledby="rulesTitle">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">RELEASE POLICY</p>
+            <h2 id="rulesTitle">发布规则</h2>
+          </div>
+        </div>
+        <ol>
+          <li>借鉴项目只记录来源和使用边界，不暗示获得上游背书。</li>
+          <li>模型、数据集、角色素材和音乐各自独立审查，不以项目整体许可证代替。</li>
+          <li>标记为待审查或受限的条目，不得未经复核进入商业发布物。</li>
+          <li>用户上传的角色、声音和训练数据默认私有，权利声明由上传者负责。</li>
+        </ol>
+      </section>
+    </main>
+
+    <script src="/credits/app.js"></script>
+  </body>
+</html>

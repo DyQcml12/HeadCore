@@ -1,0 +1,84 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  core:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env.staging
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      JSONL_STORAGE_DIR: /data/storage
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - core_data:/data
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  migrate-v2:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    profiles: ["database-v2"]
+    env_file:
+      - .env.staging
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+    command: ["python", "scripts/apply_database_v2_migrations.py"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  qdrant:
+    image: qdrant/qdrant:v1.13.4
+    profiles: ["semantic-memory"]
+    restart: unless-stopped
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  semantic-memory-worker:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    profiles: ["semantic-memory"]
+    restart: unless-stopped
+    env_file:
+      - .env.staging
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      SEMANTIC_MEMORY_QDRANT_URL: http://qdrant:6333
+    command: ["python", "scripts/semantic_memory_sync.py"]
+    volumes:
+      - ${SEMANTIC_MEMORY_MODEL_HOST_PATH}:/models:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+
+volumes:
+  mysql_data:
+  core_data:
+  qdrant_data:

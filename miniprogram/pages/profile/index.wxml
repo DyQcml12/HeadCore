@@ -1,0 +1,52 @@
+<view class="screen">
+  <view class="topbar">
+    <view class="brand-lockup">
+      <text class="brand-kicker">WANGSHENG PARLOR</text>
+      <text class="brand-title">我的璃月</text>
+    </view>
+  </view>
+
+  <view wx:if="!ready" class="state-block"><text>正在读取个人空间</text></view>
+  <view wx:elif="!apiConfigured" class="state-block">
+    <text class="state-title">尚未配置服务地址</text>
+    <text class="state-copy">填写 HTTPS 服务域名后，个人空间才会开启。</text>
+  </view>
+  <view wx:elif="!signedIn" class="state-block">
+    <text class="state-title">这里需要你的账户</text>
+    <button class="primary-action" bindtap="goAuth">登录或注册</button>
+  </view>
+
+  <block wx:else>
+    <view class="profile-hero">
+      <view class="profile-seal">{{account.initial}}</view>
+      <view class="profile-copy">
+        <text class="profile-name">{{account.display_name}}</text>
+        <text class="profile-email">{{account.email}}</text>
+      </view>
+    </view>
+
+    <view class="section-switch" role="tablist">
+      <button class="switch-item {{activeView === 'profile' ? 'active' : ''}}" data-view="profile" bindtap="switchView">账户</button>
+      <button class="switch-item {{activeView === 'memory' ? 'active' : ''}}" data-view="memory" bindtap="switchView">记忆</button>
+    </view>
+
+    <view wx:if="{{activeView === 'profile'}}" class="content-view">
+      <view class="detail-row"><text>邮箱状态</text><text class="detail-value">{{account.email_verified ? '已验证' : '待验证'}}</text></view>
+      <view class="detail-row"><text>加入日期</text><text class="detail-value">{{account.createdDate}}</text></view>
+      <view class="detail-row"><text>会话到期</text><text class="detail-value">{{account.sessionExpiresDate}}</text></view>
+      <button class="logout-action" bindtap="logout">退出当前账户</button>
+    </view>
+
+    <view wx:else class="content-view memory-view">
+      <view wx:if="{{memoriesLoading}}" class="memory-state"><text>正在翻阅记忆</text></view>
+      <view wx:elif="{{!memories.length}}" class="memory-state"><text>还没有保存的记忆</text></view>
+      <block wx:else wx:for="{{memories}}" wx:key="id">
+        <view class="memory-entry">
+          <view class="memory-meta"><text>{{item.memory_type || '会话记忆'}}</text><text>{{item.displayDate}}</text></view>
+          <text class="memory-copy">{{item.content}}</text>
+          <button class="delete-action" data-memoryid="{{item.id}}" bindtap="deleteMemory">删除</button>
+        </view>
+      </block>
+    </view>
+  </block>
+</view>

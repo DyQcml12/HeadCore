@@ -1,0 +1,34 @@
+[
+  {
+    "name": "FastAPI",
+    "category": "Web framework",
+    "usage": "Hutao Core 的 HTTP API 与静态页面服务框架。",
+    "url": "https://github.com/fastapi/fastapi",
+    "license": "MIT",
+    "commercial_status": "confirmed"
+  },
+  {
+    "name": "GPT-SoVITS",
+    "category": "Optional local voice training foundation",
+    "usage": "仅作为未来 Voice Studio 的本地训练和推理基础，不承载人格或语言模型逻辑。",
+    "url": "https://github.com/RVC-Boss/GPT-SoVITS",
+    "license": "Requires release review",
+    "commercial_status": "restricted"
+  },
+  {
+    "name": "AIRI",
+    "category": "Architecture reference project",
+    "usage": "仅借鉴本地能力宿主与游戏适配器的产品边界，不包含其代码或素材。",
+    "url": "https://github.com/moeru-ai/airi",
+    "license": "Requires release review",
+    "commercial_status": "reference"
+  },
+  {
+    "name": "Mineradio",
+    "category": "Website design reference",
+    "usage": "仅研究产品叙事和多端入口组织，不包含其文案、图形、代码或音乐资源。",
+    "url": "https://github.com/XxHuberrr/Mineradio",
+    "license": "Reference only",
+    "commercial_status": "reference"
+  }
+]

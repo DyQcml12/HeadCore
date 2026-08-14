@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>胡桃视觉工作台</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/ui/theme.css" />
+    <link rel="stylesheet" href="/workbench/style.css" />
+  </head>
+  <body>
+    <div class="workbench-shell">
+      <header class="workbench-header">
+        <a class="workbench-brand" href="/desk" aria-label="返回胡桃对话">
+          <span class="brand-mark" aria-hidden="true">H</span>
+          <span><strong>胡桃</strong><small>VISUAL WORKBENCH</small></span>
+        </a>
+        <div class="header-status" id="headerStatus" aria-live="polite">访问受限</div>
+        <button class="text-button" id="logoutButton" type="button" hidden>退出工作台</button>
+      </header>
+
+      <main class="workbench-main">
+        <section class="access-gate" id="accessGate" aria-labelledby="accessTitle">
+          <div class="section-heading">
+            <p class="eyebrow">LOCAL ADMINISTRATION</p>
+            <h1 id="accessTitle">视觉工作台</h1>
+            <p>本机管理员会话</p>
+          </div>
+          <form id="loginForm" class="access-form">
+            <label for="adminSecret">管理员口令</label>
+            <input id="adminSecret" name="secret" type="password" autocomplete="current-password" required maxlength="512" />
+            <p class="form-error" id="loginError" role="alert" hidden></p>
+            <button class="primary-button" type="submit">进入工作台</button>
+          </form>
+          <p class="gate-note" id="gateNote" aria-live="polite">等待管理员认证</p>
+        </section>
+
+        <section id="workbenchPanel" hidden aria-labelledby="workbenchTitle">
+          <div class="workspace-heading">
+            <div>
+              <p class="eyebrow">LOCAL VISION CONTROL</p>
+              <h1 id="workbenchTitle">视觉会话</h1>
+            </div>
+            <p id="sessionExpiry" class="session-expiry"></p>
+          </div>
+
+          <div class="workspace-grid">
+            <section class="tool-panel capability-panel" aria-labelledby="capabilityTitle">
+              <div class="panel-title"><p class="eyebrow">RUNTIME</p><h2 id="capabilityTitle">感知边界</h2></div>
+              <dl class="metric-list">
+                <div><dt>本地采集</dt><dd id="cameraAvailability">读取中</dd></div>
+                <div><dt>单次时限</dt><dd id="cameraDuration">读取中</dd></div>
+                <div><dt>原始画面</dt><dd id="frameRetention">读取中</dd></div>
+                <div><dt>身份识别</dt><dd id="faceIdentification">读取中</dd></div>
+              </dl>
+            </section>
+
+            <section class="tool-panel session-panel" aria-labelledby="sessionTitle">
+              <div class="panel-title"><p class="eyebrow">CONSENT SESSION</p><h2 id="sessionTitle">创建会话</h2></div>
+              <form id="sessionForm" class="session-form">
+                <label for="cameraSlot">摄像头编号</label>
+                <input id="cameraSlot" name="camera_slot" type="number" min="0" max="15" value="0" inputmode="numeric" required />
+                <label class="consent-row" for="cameraConsent">
+                  <input id="cameraConsent" name="consent_granted" type="checkbox" required />
+                  <span>已获得本次本地感知的明确同意</span>
+                </label>
+                <p class="form-error" id="sessionError" role="alert" hidden></p>
+                <button class="primary-button" id="createSessionButton" type="submit">创建受限会话</button>
+              </form>
+            </section>
+
+            <section class="tool-panel active-panel" aria-labelledby="activeTitle">
+              <div class="panel-title"><p class="eyebrow">CURRENT SESSION</p><h2 id="activeTitle">当前状态</h2></div>
+              <div class="session-state" id="sessionState" data-state="idle" aria-live="polite">
+                <span class="state-indicator" aria-hidden="true"></span>
+                <div><strong id="sessionStateTitle">尚未创建会话</strong><p id="sessionStateDetail">创建后会在时限内保持有效。</p></div>
+              </div>
+              <dl class="session-detail" id="sessionDetail" hidden>
+                <div><dt>会话编号</dt><dd id="sessionIdValue"></dd></div>
+                <div><dt>到期时间</dt><dd id="sessionExpiryValue"></dd></div>
+              </dl>
+              <div class="capture-controls" id="captureControls" hidden>
+                <div class="capture-state" id="captureState" data-state="idle">
+                  <span aria-hidden="true"></span><span id="captureStateText">本地采集未启动</span>
+                </div>
+                <div class="action-row">
+                  <button class="secondary-button" id="startCaptureButton" type="button">启动本地采集</button>
+                  <button class="secondary-button" id="stopCaptureButton" type="button" hidden>停止采集</button>
+                </div>
+                <p class="observation-text" id="observationText">尚无稳定观察结果</p>
+              </div>
+              <button class="secondary-button" id="stopSessionButton" type="button" hidden>结束当前会话</button>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script src="/workbench/app.js"></script>
+  </body>
+</html>

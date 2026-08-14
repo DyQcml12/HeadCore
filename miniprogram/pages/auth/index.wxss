@@ -1,0 +1,145 @@
+.screen {
+  min-height: 100vh;
+  padding: calc(env(safe-area-inset-top) + 42rpx) 42rpx calc(env(safe-area-inset-bottom) + 44rpx);
+  box-sizing: border-box;
+  background: #171113;
+}
+
+.masthead {
+  padding: 26rpx 0 52rpx;
+}
+
+.seal {
+  display: grid;
+  width: 80rpx;
+  height: 80rpx;
+  margin-bottom: 28rpx;
+  place-items: center;
+  border: 2rpx solid #e5a16e;
+  border-radius: 50%;
+  color: #e5a16e;
+  font-size: 37rpx;
+  font-weight: 700;
+}
+
+.eyebrow,
+.title,
+.lead {
+  display: block;
+}
+
+.eyebrow {
+  color: #9d827a;
+  font-size: 18rpx;
+  letter-spacing: 2rpx;
+}
+
+.title {
+  margin-top: 12rpx;
+  color: #f6e3d7;
+  font-size: 56rpx;
+  font-weight: 600;
+}
+
+.lead {
+  max-width: 560rpx;
+  margin-top: 18rpx;
+  color: #ab938b;
+  font-size: 26rpx;
+  line-height: 1.7;
+}
+
+.state-block {
+  padding: 80rpx 0;
+  color: #bda79e;
+  font-size: 28rpx;
+  text-align: center;
+}
+
+.mode-switch {
+  display: flex;
+  gap: 30rpx;
+  margin-bottom: 34rpx;
+  border-bottom: 1rpx solid rgba(234, 184, 137, 0.18);
+}
+
+.mode-button {
+  margin: 0;
+  padding: 14rpx 3rpx;
+  border-radius: 0;
+  background: transparent;
+  color: #9d8680;
+  font-size: 28rpx;
+}
+
+.mode-button.active {
+  border-bottom: 3rpx solid #e5a16e;
+  color: #f5e9e0;
+}
+
+.auth-form {
+  padding-top: 4rpx;
+}
+
+.form-title {
+  display: block;
+  margin: 0 0 30rpx;
+  color: #f4e5dc;
+  font-size: 36rpx;
+  font-weight: 600;
+}
+
+.field {
+  box-sizing: border-box;
+  width: 100%;
+  height: 92rpx;
+  margin: 0 0 18rpx;
+  padding: 0 24rpx;
+  border: 1rpx solid rgba(234, 184, 137, 0.25);
+  border-radius: 6rpx;
+  background: #211719;
+  color: #f7ebe4;
+  font-size: 28rpx;
+}
+
+.placeholder {
+  color: #7f6c68;
+}
+
+.password-tip {
+  display: block;
+  margin: -2rpx 0 24rpx;
+  color: #9a837b;
+  font-size: 22rpx;
+}
+
+.submit-button {
+  width: 100%;
+  margin-top: 16rpx;
+  padding: 20rpx;
+  border-radius: 6rpx;
+  background: #b96d4f;
+  color: #fff7f1;
+  font-size: 28rpx;
+  line-height: 1.4;
+}
+
+.submit-button[disabled] {
+  opacity: 0.45;
+}
+
+.link-button {
+  display: block;
+  margin: 22rpx auto 0;
+  padding: 12rpx;
+  background: transparent;
+  color: #d4b097;
+  font-size: 24rpx;
+}
+
+.notice {
+  margin: 0 0 24rpx;
+  color: #edb08b;
+  font-size: 24rpx;
+  line-height: 1.6;
+}

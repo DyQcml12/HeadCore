@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <link rel="icon" href="data:,">
+  <title>人格引擎 | 账户认证</title>
+  <link rel="stylesheet" href="/ui/liquid-theme.css">
+  <link rel="stylesheet" href="/auth/style.css">
+</head>
+<body class="auth-body" data-auth-state="checking" data-theme="dark">
+  <button id="themeToggle" class="theme-toggle" type="button" aria-pressed="false" aria-label="切换到浅色模式">
+    <span class="theme-toggle-icon" aria-hidden="true">◐</span>
+    <span class="theme-toggle-label">浅色</span>
+  </button>
+  <main class="auth-shell" id="accountMain">
+    <section class="auth-intro" aria-labelledby="accountTitle">
+      <p>PERSONACORE</p>
+      <h1 id="accountTitle">把想保存的部分，<em>留在自己的工坊。</em></h1>
+      <span>账户用于保存人格、记忆和模型配置；未启用服务时，页面会明确保持本地展示状态。</span>
+      <section class="testimonial-carousel" aria-label="使用者反馈" aria-roledescription="轮播" data-carousel>
+        <div class="testimonial-viewport">
+          <figure class="testimonial-slide is-active" data-testimonial aria-hidden="false"><blockquote>“它把人格、记忆和模型设置放回同一个清晰的工作流。”</blockquote><figcaption>林知夏 · 早期体验者</figcaption></figure>
+          <figure class="testimonial-slide" data-testimonial aria-hidden="true" hidden><blockquote>“切换设备后仍能接上对话，而不是重新解释一遍自己。”</blockquote><figcaption>周衡 · 早期体验者</figcaption></figure>
+          <figure class="testimonial-slide" data-testimonial aria-hidden="true" hidden><blockquote>“本地状态与云端状态分得很清楚，我知道数据此刻在哪里。”</blockquote><figcaption>陈默 · 早期体验者</figcaption></figure>
+        </div>
+        <div class="testimonial-controls">
+          <div class="testimonial-dots" aria-label="选择使用者反馈">
+            <button type="button" data-testimonial-index="0" aria-label="显示第 1 条反馈" aria-pressed="true"></button>
+            <button type="button" data-testimonial-index="1" aria-label="显示第 2 条反馈" aria-pressed="false"></button>
+            <button type="button" data-testimonial-index="2" aria-label="显示第 3 条反馈" aria-pressed="false"></button>
+          </div>
+          <span id="testimonialCount" class="testimonial-count" aria-hidden="true">01 / 03</span>
+          <button id="testimonialToggle" class="testimonial-toggle" type="button" aria-pressed="false" aria-label="暂停自动轮播" title="暂停自动轮播"><span aria-hidden="true">Ⅱ</span></button>
+        </div>
+        <p id="testimonialStatus" class="sr-only" role="status" aria-live="polite" aria-atomic="true">正在显示第 1 条反馈，共 3 条</p>
+      </section>
+    </section>
+    <section class="account-panel liquid-glass glass-card" aria-labelledby="formTitle">
+      <div id="authLoading" class="auth-loading" role="status"><p>账户服务</p><span class="loading-line title"></span><span class="loading-line"></span><span class="loading-line short"></span><small>正在确认账户服务状态</small></div>
+      <section id="statusError" class="gate-state" role="alert" aria-labelledby="statusErrorTitle" hidden><p>连接中断</p><h2 id="statusErrorTitle">暂时无法确认账户状态</h2><span>为避免绕过账户边界，认证操作暂时不可用。请检查本地服务后重试。</span><button id="retryStatus" class="primary-action" type="button">重新确认</button></section>
+      <div id="authViews" hidden>
+        <div class="auth-mode-tabs" role="tablist" aria-label="账户方式"><button id="loginTab" type="button" role="tab" data-mode="login" aria-selected="true" aria-controls="loginForm" tabindex="0">登录</button><button id="registerTab" type="button" role="tab" data-mode="register" aria-selected="false" aria-controls="registerForm" tabindex="-1">注册</button></div>
+        <div class="panel-heading"><p>账户与记忆</p><h2 id="formTitle">欢迎回来</h2><span id="formLead">登录后继续上一次对话。</span></div>
+        <section id="localMode" class="service-notice" hidden aria-live="polite"><strong>账户服务尚未启用</strong><span>表单可以用于检查输入，但不会提交或保存任何账户数据。</span></section>
+        <p id="notice" class="notice" hidden role="status" aria-live="polite"></p>
+        <form id="loginForm" class="auth-form" data-view="login" role="tabpanel" aria-labelledby="loginTab" aria-describedby="formLead" novalidate><label for="loginEmail">邮箱</label><input id="loginEmail" name="email" type="email" autocomplete="email" inputmode="email" spellcheck="false" aria-describedby="loginEmailError" required><p id="loginEmailError" class="field-error" data-error-for="loginEmail" role="alert"></p><label for="loginPassword">密码</label><span class="password-row"><input id="loginPassword" name="password" type="password" autocomplete="current-password" aria-describedby="loginPasswordError" required><button class="reveal" type="button" data-reveal aria-label="显示密码">显示</button></span><p id="loginPasswordError" class="field-error" data-error-for="loginPassword" role="alert"></p><div class="auth-aux-actions"><label class="check-control" for="rememberEmail"><input id="rememberEmail" type="checkbox"><span>记住我（仅邮箱）</span></label><button class="text-action" type="button" data-mode="resetRequest">忘记密码</button></div><button class="primary-action" type="submit" disabled>登录</button></form>
+        <form id="resetRequestForm" class="auth-form" data-view="resetRequest" role="tabpanel" aria-labelledby="loginTab" aria-describedby="formLead resetRequestIntro" hidden novalidate><p id="resetRequestIntro" class="form-intro">输入注册邮箱。无论邮箱是否存在，页面都会给出相同提示。</p><label for="resetEmail">注册邮箱</label><input id="resetEmail" name="email" type="email" autocomplete="email" inputmode="email" spellcheck="false" aria-describedby="resetEmailError" required><p id="resetEmailError" class="field-error" data-error-for="resetEmail" role="alert"></p><button class="primary-action" type="submit" disabled>发送重置邮件</button><button class="secondary-action" type="button" data-mode="login">返回登录</button></form>
+        <form id="resetConfirmForm" class="auth-form" data-view="resetConfirm" role="tabpanel" aria-labelledby="loginTab" aria-describedby="formLead resetConfirmIntro" hidden novalidate><p id="resetConfirmIntro" class="form-intro">粘贴邮件中的完整重置码，再设置新密码。</p><label for="resetToken">密码重置码</label><input id="resetToken" name="token" type="text" autocomplete="one-time-code" aria-describedby="resetTokenError" required maxlength="256" spellcheck="false"><p id="resetTokenError" class="field-error" data-error-for="resetToken" role="alert"></p><label for="resetPassword">新密码</label><span class="password-row"><input id="resetPassword" name="password" type="password" autocomplete="new-password" aria-describedby="resetPasswordHelp resetPasswordError" required minlength="12" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9\s]).{12,}"><button class="reveal" type="button" data-reveal aria-label="显示密码">显示</button></span><small id="resetPasswordHelp" class="field-help">至少 12 个字符，包含大小写字母、数字和符号。</small><p id="resetPasswordError" class="field-error" data-error-for="resetPassword" role="alert"></p><button class="primary-action" type="submit" disabled>更新密码</button><button class="secondary-action" type="button" data-mode="resetRequest">重新发送邮件</button></form>
+        <form id="registerForm" class="auth-form" data-view="register" role="tabpanel" aria-labelledby="registerTab" aria-describedby="formLead" hidden novalidate><label for="displayName">显示名称</label><input id="displayName" name="display_name" type="text" autocomplete="nickname" spellcheck="false" aria-describedby="displayNameError" required maxlength="128"><p id="displayNameError" class="field-error" data-error-for="displayName" role="alert"></p><label for="registerEmail">邮箱</label><input id="registerEmail" name="email" type="email" autocomplete="email" inputmode="email" spellcheck="false" aria-describedby="registerEmailError" required><p id="registerEmailError" class="field-error" data-error-for="registerEmail" role="alert"></p><label for="registerPassword">设置密码</label><span class="password-row"><input id="registerPassword" name="password" type="password" autocomplete="new-password" aria-describedby="registerPasswordHelp registerPasswordStrengthLabel registerPasswordError" required minlength="12" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9\s]).{12,}"><button class="reveal" type="button" data-reveal aria-label="显示密码">显示</button></span><small id="registerPasswordHelp" class="field-help">至少 12 个字符，包含大小写字母、数字和符号。</small><div class="password-strength"><meter id="registerPasswordStrength" min="0" max="4" low="2" high="3" optimum="4" value="0" aria-label="密码强度"></meter><span id="registerPasswordStrengthLabel" role="status" aria-live="polite">密码强度：尚未输入</span></div><p id="registerPasswordError" class="field-error" data-error-for="registerPassword" role="alert"></p><label for="registerPasswordConfirm">确认密码</label><span class="password-row"><input id="registerPasswordConfirm" type="password" autocomplete="new-password" aria-describedby="registerPasswordConfirmError" required><button class="reveal" type="button" data-reveal aria-label="显示确认密码">显示</button></span><p id="registerPasswordConfirmError" class="field-error" data-error-for="registerPasswordConfirm" role="alert"></p><button class="primary-action" type="submit" disabled>创建账户</button></form>
+        <form id="verifyForm" class="auth-form" data-view="verify" role="tabpanel" aria-labelledby="registerTab" aria-describedby="formLead verificationHelp" hidden novalidate><div class="verification-address"><span>验证码已发送至</span><strong id="verificationEmail">你的邮箱</strong></div><label for="verificationToken">邮箱验证码</label><input id="verificationToken" name="token" type="text" autocomplete="one-time-code" aria-describedby="verificationHelp verificationTokenError" required maxlength="256" spellcheck="false"><small id="verificationHelp" class="field-help">复制邮件中的完整验证码并粘贴到这里。</small><p id="verificationTokenError" class="field-error" data-error-for="verificationToken" role="alert"></p><button class="primary-action" type="submit" disabled>完成验证</button><button class="secondary-action" type="button" data-mode="register">修改注册信息</button></form>
+        <section id="verifiedState" class="verified-state" data-view="verified" role="tabpanel" aria-labelledby="registerTab" aria-describedby="formLead" tabindex="0" hidden><p>账户验证</p><h3>邮箱验证完成</h3><span>现在可以登录，继续使用你的工坊。</span><button class="primary-action" type="button" data-mode="login">返回登录</button></section>
+      </div>
+    </section>
+  </main>
+  <script src="/auth/app.js"></script>
+</body>
+</html>

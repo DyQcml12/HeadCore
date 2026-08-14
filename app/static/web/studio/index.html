@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0b0f" />
+    <link rel="manifest" href="/desk/manifest.webmanifest" />
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/ui/liquid-theme.css" />
+    <link rel="stylesheet" href="/desk/style.css" />
+    <title>人格引擎 | 即时沙盒</title>
+  </head>
+  <body data-access-mode="checking">
+    <div class="desk-shell">
+      <header class="workspace-header">
+        <a class="workspace-brand" href="/" aria-label="返回人格引擎首页">
+          <span class="brand-index" aria-hidden="true"><i></i><i></i></span>
+          <span><strong>人格引擎</strong><small>PERSONACORE</small></span>
+        </a>
+        <span class="header-location">即时沙盒</span>
+        <div class="workspace-actions">
+          <a id="accountAction" class="account-action" href="/me">进入工坊</a>
+        </div>
+      </header>
+
+      <main class="conversation-shell" aria-label="即时沙盒">
+        <aside class="workspace-sidebar" aria-label="沙盒导航">
+          <section class="sidebar-section">
+            <p class="sidebar-label">会话</p>
+            <div class="history-entry">
+              <button class="history-item active" type="button" aria-current="page">
+                <span class="history-title">当前测试会话</span>
+                <time id="historyTimestamp" datetime="">刚刚</time>
+              </button>
+              <button id="historyMenuButton" class="history-menu-trigger" type="button" aria-label="会话更多操作" aria-haspopup="menu" aria-expanded="false" aria-controls="historyMenu" title="会话更多操作">⋮</button>
+              <div id="historyMenu" class="history-menu liquid-glass" role="menu" hidden>
+                <button type="button" role="menuitem" data-history-action="copy-session">复制会话编号</button>
+              </div>
+            </div>
+            <div class="history-placeholder" aria-hidden="true"><i></i><i></i><i></i></div>
+          </section>
+        </aside>
+
+        <section class="conversation-stage" aria-labelledby="conversationTitle">
+          <h1 id="conversationTitle" class="sr-only">即时沙盒</h1>
+          <aside id="sandboxStatus" class="sandbox-status liquid-glass" aria-label="Sandbox Mode · Messages are NOT written to long-term memory">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.3c0 4.5 3 8.6 7.5 9.7 4.5-1.1 7.5-5.2 7.5-9.7V6L12 3Z" /><path d="m9 12 2 2 4-4" /></svg>
+            <strong>Sandbox Mode</strong>
+            <span class="status-separator" aria-hidden="true">·</span>
+            <span>消息不会写入长期记忆</span>
+            <span id="footerCoreStatus" class="core-status">正在检查本机服务</span>
+          </aside>
+
+          <div id="messages" class="messages" aria-live="polite" aria-label="对话消息">
+            <section class="conversation-welcome" aria-labelledby="welcomeTitle">
+              <p class="welcome-kicker">即时沙盒</p>
+              <h2 id="welcomeTitle">先加载一份草稿，<br />或从一句话开始。</h2>
+              <p>这里的对话仅用于快速验证。草稿留在当前浏览器，沙盒消息不会被当作长期记忆保存。</p>
+              <div class="prompt-row" aria-label="示例提问">
+                <button type="button" data-prompt="帮我设计一个有边界感的角色设定">设计人格设定</button>
+                <button type="button" data-prompt="我想聊聊今天发生的一件事">开始一段对话</button>
+                <button type="button" data-prompt="帮我整理这段想法">整理想法</button>
+              </div>
+            </section>
+          </div>
+
+          <form id="chatForm" class="composer liquid-glass glass-card" novalidate data-composer-mode="text">
+            <div class="composer-leading">
+              <button id="attachmentAction" class="composer-icon-action" type="button" aria-label="添加附件，本地沙盒不会上传" title="附件不会离开本地沙盒">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 1 1 5.7 5.7l-9.2 9.2a2 2 0 1 1-2.8-2.8l8.5-8.5" /></svg>
+              </button>
+              <button id="voiceModeAction" class="composer-icon-action mode-action" type="button" data-composer-mode="voice" aria-label="切换到按住说话" aria-controls="textComposer voiceComposer" aria-pressed="false" title="切换到按住说话">
+                <svg class="voice-mode-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3" /></svg>
+                <svg class="text-mode-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M12 5v14M8 19h8" /></svg>
+              </button>
+            </div>
+            <div id="textComposer" class="text-composer">
+              <label class="sr-only" for="chatInput">对话内容</label>
+              <input id="chatInput" type="text" maxlength="4000" enterkeyhint="send" autocomplete="off" placeholder="输入测试消息…" />
+              <span id="charCount" aria-live="polite">0/4000</span>
+            </div>
+            <div id="voiceComposer" class="voice-composer" hidden>
+              <button id="holdToTalk" class="hold-to-talk" type="button"><span aria-hidden="true">●</span><span id="holdToTalkLabel">按住说话</span></button>
+              <output id="voiceDuration" aria-live="polite">00:00</output>
+            </div>
+            <button id="sendButton" class="send-action" type="submit" aria-label="发送测试消息" title="发送" disabled>
+              <span id="sendLabel" class="sr-only">发送</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6" /></svg>
+            </button>
+            <span id="composerState" class="sr-only" role="status" aria-live="polite"></span>
+          </form>
+        </section>
+
+        <aside id="contextSidebar" class="context-sidebar" aria-labelledby="contextTitle">
+          <header class="context-header">
+            <div>
+              <span>PERSONA</span>
+              <h2 id="contextTitle">Current Persona</h2>
+            </div>
+            <button id="contextToggle" class="context-toggle" type="button" aria-label="折叠当前人格栏" aria-controls="contextContent" aria-expanded="true" title="折叠当前人格栏">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+            </button>
+          </header>
+          <div id="contextContent" class="context-content">
+            <section class="persona-toolbar liquid-glass" aria-label="当前人格与模型">
+              <label for="personaSelect">人格草稿</label>
+              <select id="personaSelect" aria-describedby="personaModel">
+                <option value="default">选择或加载你的人格模板...</option>
+              </select>
+              <span id="personaModel" class="model-chip">基础对话模型 / 本机配置</span>
+            </section>
+            <section class="context-block">
+              <p id="accessModeLabel" class="session-label">临时会话</p>
+              <div class="agent-presence"><span aria-hidden="true">P</span><p><strong id="sessionMode">未加载任何人格</strong><small id="sandboxDetail">从工坊保存草稿后，可在这里加载并测试。</small></p></div>
+            </section>
+            <p id="personaWarning" class="persona-warning" hidden></p>
+            <dl class="context-facts">
+              <div><dt>运行方式</dt><dd>本地沙盒</dd></div>
+              <div><dt>输入通道</dt><dd>文字 / 语音</dd></div>
+              <div><dt>记忆策略</dt><dd>不持久化</dd></div>
+            </dl>
+            <section class="context-note">
+              <p class="sidebar-label">提示</p>
+              <span>人格草稿只改变表达层，不会覆盖安全、权限或 HeadCore 状态。</span>
+            </section>
+          </div>
+        </aside>
+      </main>
+    </div>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <script src="/desk/app.js"></script>
+  </body>
+</html>

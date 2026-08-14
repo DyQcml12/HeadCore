@@ -1,0 +1,168 @@
+{
+  "schema_version": 1,
+  "seed_fingerprint": "d6afc4cf0ef3",
+  "public_items": [
+    {
+      "item_id": "BR-70456DB8D7",
+      "scenario_id": "ambiguous-reference",
+      "user_input": "这个怎么做？",
+      "option_a": "直接给出有限、可执行的建议",
+      "option_b": "只追问完成当前请求所需的信息"
+    },
+    {
+      "item_id": "BR-C45A1EF01D",
+      "scenario_id": "technical-progress",
+      "user_input": "继续优化这个项目的 HeadCore，并检查状态恢复和反馈逻辑",
+      "option_a": "先确认关键歧义，再继续回答",
+      "option_b": "承接当前任务并推进一个明确步骤"
+    },
+    {
+      "item_id": "BR-AD80C9D640",
+      "scenario_id": "vulnerable-support",
+      "user_input": "我今天真的很难受，脑子里乱成一团",
+      "option_a": "先回应感受，再决定是否追问",
+      "option_b": "直接给出有限、可执行的建议"
+    },
+    {
+      "item_id": "BR-D086DB1FB7",
+      "scenario_id": "explicit-correction",
+      "user_input": "你理解错了，我说的是先检查接口，不是重写项目",
+      "option_a": "先体现纠正并恢复自然交流",
+      "option_b": "利用已知信息推进一个可验证步骤"
+    },
+    {
+      "item_id": "BR-150EEB54D8",
+      "scenario_id": "mixed-emotion-advice",
+      "user_input": "我很累，但你直接告诉我这个项目该怎么办",
+      "option_a": "先回应感受，再决定是否追问",
+      "option_b": "直接给出有限、可执行的建议"
+    },
+    {
+      "item_id": "BR-2E62F51CAD",
+      "scenario_id": "correction-then-task",
+      "user_input": "别演了，继续把这个接口写完",
+      "option_a": "先体现纠正并恢复自然交流",
+      "option_b": "利用已知信息推进一个可验证步骤"
+    },
+    {
+      "item_id": "BR-3D099F23CD",
+      "scenario_id": "vulnerable-explicit-solution",
+      "user_input": "我很难受，不过请给我一个具体解决方案",
+      "option_a": "先回应感受，再决定是否追问",
+      "option_b": "直接给出有限、可执行的建议"
+    },
+    {
+      "item_id": "BR-6CD56A74D5",
+      "scenario_id": "no-comfort-debug",
+      "user_input": "先别安慰我，帮我查这个代码报错",
+      "option_a": "承接当前任务并推进一个明确步骤",
+      "option_b": "先确认关键歧义，再继续回答"
+    },
+    {
+      "item_id": "BR-6C4E51CEDD",
+      "scenario_id": "withdrawal-but-continue",
+      "user_input": "算了，但这个项目还是继续做吧",
+      "option_a": "尊重停止表达，用一句轻确认留出空间；不要断言用户情绪",
+      "option_b": "利用已知信息推进一个可验证步骤"
+    },
+    {
+      "item_id": "BR-8D3DD72333",
+      "scenario_id": "multi-object-technical",
+      "user_input": "这个接口和那个模型应该怎么组合？",
+      "option_a": "承接当前任务并推进一个明确步骤",
+      "option_b": "先确认关键歧义，再继续回答"
+    }
+  ],
+  "mappings": [
+    {
+      "item_id": "BR-70456DB8D7",
+      "preference_id": "pref-ambiguous-clarify",
+      "scenario_id": "ambiguous-reference",
+      "option_a_action": "answer",
+      "option_b_action": "clarify",
+      "reference_preferred_action": "clarify",
+      "headcore_preferred_action": "clarify"
+    },
+    {
+      "item_id": "BR-C45A1EF01D",
+      "preference_id": "pref-technical-progress",
+      "scenario_id": "technical-progress",
+      "option_a_action": "clarify",
+      "option_b_action": "continue_task",
+      "reference_preferred_action": "continue_task",
+      "headcore_preferred_action": "continue_task"
+    },
+    {
+      "item_id": "BR-AD80C9D640",
+      "preference_id": "pref-vulnerable-support",
+      "scenario_id": "vulnerable-support",
+      "option_a_action": "support",
+      "option_b_action": "answer",
+      "reference_preferred_action": "support",
+      "headcore_preferred_action": "support"
+    },
+    {
+      "item_id": "BR-D086DB1FB7",
+      "preference_id": "pref-correction-repair",
+      "scenario_id": "explicit-correction",
+      "option_a_action": "repair",
+      "option_b_action": "continue_task",
+      "reference_preferred_action": "repair",
+      "headcore_preferred_action": "repair"
+    },
+    {
+      "item_id": "BR-150EEB54D8",
+      "preference_id": "pref-mixed-support",
+      "scenario_id": "mixed-emotion-advice",
+      "option_a_action": "support",
+      "option_b_action": "answer",
+      "reference_preferred_action": "support",
+      "headcore_preferred_action": "support"
+    },
+    {
+      "item_id": "BR-2E62F51CAD",
+      "preference_id": "pref-correction-task-repair",
+      "scenario_id": "correction-then-task",
+      "option_a_action": "repair",
+      "option_b_action": "continue_task",
+      "reference_preferred_action": "repair",
+      "headcore_preferred_action": "repair"
+    },
+    {
+      "item_id": "BR-3D099F23CD",
+      "preference_id": "pref-vulnerable-solution",
+      "scenario_id": "vulnerable-explicit-solution",
+      "option_a_action": "support",
+      "option_b_action": "answer",
+      "reference_preferred_action": "support",
+      "headcore_preferred_action": "support"
+    },
+    {
+      "item_id": "BR-6CD56A74D5",
+      "preference_id": "pref-debug-progress",
+      "scenario_id": "no-comfort-debug",
+      "option_a_action": "continue_task",
+      "option_b_action": "clarify",
+      "reference_preferred_action": "continue_task",
+      "headcore_preferred_action": "continue_task"
+    },
+    {
+      "item_id": "BR-6C4E51CEDD",
+      "preference_id": "pref-withdrawal-task",
+      "scenario_id": "withdrawal-but-continue",
+      "option_a_action": "support",
+      "option_b_action": "continue_task",
+      "reference_preferred_action": "continue_task",
+      "headcore_preferred_action": "continue_task"
+    },
+    {
+      "item_id": "BR-8D3DD72333",
+      "preference_id": "pref-multi-object",
+      "scenario_id": "multi-object-technical",
+      "option_a_action": "continue_task",
+      "option_b_action": "clarify",
+      "reference_preferred_action": "continue_task",
+      "headcore_preferred_action": "continue_task"
+    }
+  ]
+}

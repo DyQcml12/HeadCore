@@ -1,0 +1,70 @@
+<view class="screen">
+  <view class="topbar">
+    <view class="brand" aria-label="璃月胡桃">
+      <view class="brand-mark">往</view>
+      <view>
+        <text class="brand-overline">WANGSHENG PARLOR</text>
+        <text class="brand-name">璃月胡桃</text>
+      </view>
+    </view>
+    <button class="account-entry" bindtap="goProfile" aria-label="进入个人中心">
+      <text class="account-glyph">帐</text>
+    </button>
+  </view>
+
+  <view wx:if="!ready" class="state-panel">
+    <text class="state-title">灯火正在接通</text>
+  </view>
+  <view wx:elif="!apiConfigured" class="state-panel warning-panel">
+    <text class="state-title">尚未配置服务地址</text>
+    <text class="state-copy">填写 HTTPS 服务域名后即可连接胡桃。</text>
+  </view>
+
+  <block wx:else>
+    <view class="presence-line">
+      <view class="presence-dot"></view>
+      <text>胡桃在堂</text>
+      <text class="presence-separator">·</text>
+      <text>{{signedIn ? accountName : '请先登录'}}</text>
+    </view>
+
+    <scroll-view class="conversation" scroll-y="true" scroll-into-view="{{scrollTarget}}" scroll-with-animation="true">
+      <view class="conversation-inner">
+        <view class="scene-note">
+          <text>璃月港 · 往生堂</text>
+        </view>
+        <block wx:for="{{messages}}" wx:key="id">
+          <view id="{{item.id}}" class="message-row {{item.role}}">
+            <text class="message-author">{{item.author}}</text>
+            <view class="message-copy">{{item.text}}</view>
+            <button wx:if="{{item.replyId}}" class="reply-record {{playingReplyId === item.replyId ? 'is-playing' : ''}}" data-replyid="{{item.replyId}}" bindtap="playReply" aria-label="播放胡桃的语音回复">
+              <text class="record-ring"></text>
+            </button>
+          </view>
+        </block>
+        <view wx:if="{{thinking}}" id="thinking" class="thinking-line">
+          <text class="thinking-dot"></text>
+          <text>胡桃正在想该怎么回答</text>
+        </view>
+      </view>
+    </scroll-view>
+
+    <view class="composer-wrap">
+      <view wx:if="{{authEnabled && !signedIn}}" class="signin-gate">
+        <text>登录后继续这场对话</text>
+        <button class="text-action" bindtap="goAuth">登录</button>
+      </view>
+      <view wx:else class="composer">
+        <textarea class="composer-input" value="{{composerText}}" maxlength="4000" auto-height="true" adjust-position="true" placeholder="写下想对胡桃说的话" placeholder-class="composer-placeholder" bindinput="onComposerInput" confirm-type="send" bindconfirm="sendText" />
+        <view class="composer-bottom">
+          <button class="hold-record {{recording ? 'is-recording' : ''}}" disabled="{{!recorderAvailable || sending}}" bindtouchstart="startRecording" bindtouchend="stopRecording" bindtouchcancel="stopRecording" aria-label="按住录音">
+            <text>{{recording ? '松开发送 ' + recordingSeconds + ' 秒' : '按住说话'}}</text>
+          </button>
+          <button class="send-button" disabled="{{sending || !composerText}}" bindtap="sendText" aria-label="发送消息">
+            <text>{{sending ? '思考中' : '发送'}}</text>
+          </button>
+        </view>
+      </view>
+    </view>
+  </block>
+</view>

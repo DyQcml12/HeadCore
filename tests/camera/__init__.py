@@ -1,0 +1,1 @@
+"""Camera perception foundation tests."""
