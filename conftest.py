@@ -17,6 +17,7 @@ _NEUTRAL_TEST_ENV = {
     "EMAIL_DELIVERY_ENABLED": "false",
     "PUBLIC_WEB_TTS_ENABLED": "false",
     "WORLD_AWARENESS_ENABLED": "false",
+    "AUDIO_WARMUP_ENABLED": "false",
     "POSTGRES_DATABASE": "",
     "POSTGRES_USER": "",
     "POSTGRES_PASSWORD": "",

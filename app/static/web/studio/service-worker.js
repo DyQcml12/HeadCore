@@ -1,4 +1,4 @@
-const CACHE_NAME = "desk-shell-v15";
+const CACHE_NAME = "desk-shell-v16";
 const SHELL = ["/desk", "/desk/app.js", "/desk/style.css", "/ui/liquid-theme.css", "/desk/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {

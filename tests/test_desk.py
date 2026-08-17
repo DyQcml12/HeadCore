@@ -81,7 +81,7 @@ def test_desk_static_routes_publish_the_sandbox() -> None:
     assert ".sr-only" in shared_theme.text
     assert "--transition-slow: 1000ms" in shared_theme.text
     assert worker.status_code == 200
-    assert "desk-shell-v15" in worker.text
+    assert "desk-shell-v16" in worker.text
 
 
 def test_desk_keeps_chat_and_audio_flow_with_a_real_local_persona() -> None:

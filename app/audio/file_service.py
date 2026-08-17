@@ -85,6 +85,42 @@ async def save_upload_to_temp(upload: UploadFile) -> Path:
         return Path(tmp.name)
 
 
+def warmup_audio_pipeline() -> None:
+    """Preload ASR and emotion engines so the first request is fast.
+
+    Model loading costs tens of seconds on a cold process (measured ~74s for
+    SenseVoice + emotion2vec). Running this in a background thread at startup
+    turns that into a one-time, invisible cost; failures only log a warning
+    because models may simply be absent on fresh deployments.
+    """
+    import logging
+    import wave
+
+    logger = logging.getLogger("hutao.audio.warmup")
+    try:
+        build_default_file_asr_engines()
+        logger.info("asr engine warmup complete")
+    except Exception:
+        logger.warning("asr engine warmup failed (models may be absent)", exc_info=True)
+    try:
+        settings = load_settings()
+        if settings.audio_emotion_enabled:
+            engine = get_emotion_engine(settings.audio_emotion_model)
+            probe = Path(tempfile.gettempdir()) / "hutao_warmup_probe.wav"
+            with wave.open(str(probe), "wb") as wav:
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(16000)
+                wav.writeframes(b"\x00\x00" * 8000)
+            try:
+                engine.analyze_file(probe)
+            finally:
+                probe.unlink(missing_ok=True)
+            logger.info("emotion engine warmup complete")
+    except Exception:
+        logger.warning("emotion engine warmup failed (models may be absent)", exc_info=True)
+
+
 def transcribe_audio_file(
     audio_path: Path,
     engine: FunAsrFileEngine | None = None,

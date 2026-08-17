@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
 import json
@@ -655,7 +655,7 @@ def test_streaming_chat_api_returns_text_and_persists(monkeypatch, tmp_path: Pat
     monkeypatch.setenv("STORAGE_BACKEND", "jsonl")
     monkeypatch.setenv("JSONL_STORAGE_DIR", str(tmp_path / "stream-storage"))
     monkeypatch.setattr("app.main.settings", load_settings())
-    monkeypatch.setattr("app.main.ChatService", lambda settings: ChatService(
+    monkeypatch.setattr("app.main.ChatService", lambda settings, **kwargs: ChatService(
         settings,
         client=FakeSuccessClient(),
         repository=create_chat_repository(settings),
@@ -691,7 +691,7 @@ def test_chat_api_uses_database_v2_prehandler_when_it_returns_response(monkeypat
         )
 
     monkeypatch.setattr("app.main.try_handle_database_v2_platform_message", fake_v2_handler)
-    monkeypatch.setattr("app.main.ChatService", lambda settings: RecordingChatService(settings))
+    monkeypatch.setattr("app.main.ChatService", lambda settings, **kwargs: RecordingChatService(settings))
 
     response = asyncio.run(
         request_app(
@@ -726,7 +726,7 @@ def test_chat_api_falls_back_to_chat_service_when_v2_returns_none(monkeypatch, t
     monkeypatch.setattr("app.main.try_handle_database_v2_platform_message", fake_v2_handler)
     monkeypatch.setattr(
         "app.main.ChatService",
-        lambda settings: RecordingChatService(
+        lambda settings, **kwargs: RecordingChatService(
             settings,
             client=FakeSuccessClient(),
             repository=JsonlChatRepository(Path(settings.jsonl_storage_dir)),
@@ -759,7 +759,7 @@ def test_chat_api_passes_trusted_audio_observation_to_chat_service(
     monkeypatch.setattr("app.main.try_handle_database_v2_platform_message", fake_v2_handler)
     monkeypatch.setattr(
         "app.main.ChatService",
-        lambda settings: RecordingChatService(
+        lambda settings, **kwargs: RecordingChatService(
             settings,
             client=FakeSuccessClient(),
             repository=JsonlChatRepository(Path(settings.jsonl_storage_dir)),
@@ -797,7 +797,7 @@ def test_chat_api_uses_database_v2_repository_for_enabled_platform_chat(monkeypa
         last_repository = None
         last_call: dict[str, object] = {}
 
-        def __init__(self, settings, repository=None) -> None:
+        def __init__(self, settings, repository=None, **kwargs) -> None:
             type(self).last_repository = repository
 
         async def reply(self, user_input: str, **kwargs):
@@ -964,7 +964,7 @@ def test_audio_chat_file_api_uses_transcript_for_chat(monkeypatch) -> None:
             latency_ms=1.0,
         ),
     )
-    monkeypatch.setattr("app.main.ChatService", lambda settings: ChatService(
+    monkeypatch.setattr("app.main.ChatService", lambda settings, **kwargs: ChatService(
         settings,
         client=FakeSuccessClient(),
         repository=JsonlChatRepository(Path(settings.jsonl_storage_dir)),
@@ -1010,7 +1010,7 @@ def test_audio_chat_file_api_clarifies_blocking_low_quality_asr(monkeypatch, tmp
     )
     monkeypatch.setattr(
         "app.main.ChatService",
-        lambda settings: RecordingChatService(
+        lambda settings, **kwargs: RecordingChatService(
             settings,
             client=FakeSuccessClient(),
             repository=JsonlChatRepository(Path(settings.jsonl_storage_dir)),
@@ -1064,7 +1064,7 @@ def test_audio_chat_file_api_cleans_punctuation_collision_before_chat(monkeypatc
     )
     monkeypatch.setattr(
         "app.main.ChatService",
-        lambda settings: RecordingChatService(
+        lambda settings, **kwargs: RecordingChatService(
             settings,
             client=FakeSuccessClient(),
             repository=JsonlChatRepository(Path(settings.jsonl_storage_dir)),
@@ -1109,7 +1109,7 @@ def test_audio_chat_file_api_passes_asr_emotion_to_chat(monkeypatch, tmp_path: P
     )
     monkeypatch.setattr(
         "app.main.ChatService",
-        lambda settings: RecordingChatService(
+        lambda settings, **kwargs: RecordingChatService(
             settings,
             client=FakeSuccessClient(),
             repository=JsonlChatRepository(Path(settings.jsonl_storage_dir)),
@@ -1152,7 +1152,7 @@ def test_openai_compat_chat_completion_uses_latest_user_message(monkeypatch, tmp
     monkeypatch.setattr("app.openai_compat.settings", load_settings())
     monkeypatch.setattr(
         "app.openai_compat.ChatService",
-        lambda settings: RecordingChatService(
+        lambda settings, **kwargs: RecordingChatService(
             settings,
             client=FakeSuccessClient(),
             repository=JsonlChatRepository(Path(settings.jsonl_storage_dir)),
@@ -1197,7 +1197,7 @@ def test_openai_compat_chat_completion_accepts_text_content_parts(monkeypatch, t
     monkeypatch.setattr("app.openai_compat.settings", load_settings())
     monkeypatch.setattr(
         "app.openai_compat.ChatService",
-        lambda settings: RecordingChatService(
+        lambda settings, **kwargs: RecordingChatService(
             settings,
             client=FakeSuccessClient(),
             repository=JsonlChatRepository(Path(settings.jsonl_storage_dir)),
@@ -1253,7 +1253,7 @@ def test_openai_compat_chat_completion_uses_database_v2_for_wechat_command(monke
         )
 
     monkeypatch.setattr("app.openai_compat.try_handle_database_v2_platform_message", fake_v2_handler)
-    monkeypatch.setattr("app.openai_compat.ChatService", lambda settings: RecordingChatService(settings))
+    monkeypatch.setattr("app.openai_compat.ChatService", lambda settings, **kwargs: RecordingChatService(settings))
 
     response = asyncio.run(
         request_app(
@@ -1327,7 +1327,7 @@ def test_openai_compat_uses_database_v2_repository_for_enabled_wechat_chat(monke
         last_repository = None
         last_call: dict[str, object] = {}
 
-        def __init__(self, settings, repository=None) -> None:
+        def __init__(self, settings, repository=None, **kwargs) -> None:
             type(self).last_repository = repository
 
         async def reply(self, user_input: str, **kwargs):

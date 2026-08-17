@@ -77,6 +77,7 @@ class Settings:
     asr_provider_timeout_seconds: float = 180.0
     asr_provider_circuit_failure_threshold: int = 3
     asr_provider_circuit_recovery_seconds: float = 60.0
+    audio_warmup_enabled: bool = False
     world_awareness_enabled: bool = False
     world_fetch_timeout_seconds: float = 12.0
     world_fetch_max_bytes: int = 1_048_576
@@ -331,6 +332,9 @@ def load_settings() -> Settings:
         asr_provider_circuit_recovery_seconds=float(
             get_setting("ASR_PROVIDER_CIRCUIT_RECOVERY_SECONDS", env_values, "60")
         ),
+        audio_warmup_enabled=get_setting(
+            "AUDIO_WARMUP_ENABLED", env_values, "false"
+        ).lower() in {"1", "true", "yes", "on"},
         world_awareness_enabled=get_setting(
             "WORLD_AWARENESS_ENABLED", env_values, "false"
         ).lower() in {"1", "true", "yes", "on"},

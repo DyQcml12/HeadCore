@@ -90,6 +90,8 @@ from app.services.response_evaluator import (
     is_self_harm_directive_bait,
     is_unconfirmed_relationship_claim,
 )
+from app.camera.attention import camera_clarification_instruction, select_camera_context
+from app.camera.evidence_store import CameraContextProvider
 from app.storage.chat_repository import ChatRepository
 from app.storage.chat_repository import MessageRecord
 from app.storage.chat_repository import SessionRecord
@@ -210,6 +212,35 @@ class PreparedChat:
     self_profile: SelfProfile | None
 
 
+def _camera_context_block(
+    provider: CameraContextProvider | None,
+    *,
+    user_input: str,
+    relationship_role: str,
+) -> str:
+    """Render the L1 camera-attention block for the current turn, or "".
+
+    Only temporally-confirmed allowlisted labels reach the prompt, never frames,
+    and the block forbids inferring emotion/identity/intent from them.
+    """
+    if provider is None or relationship_role == "blocked":
+        return ""
+    try:
+        context = provider.latest_context()
+    except Exception:
+        return ""
+    selection = select_camera_context(user_input, context)
+    if selection.needs_clarification:
+        return camera_clarification_instruction()
+    if not selection.text:
+        return ""
+    return (
+        "[以下画面线索只用于回答画面相关问题；不得据此推断情绪、身份或意图："
+        + selection.text
+        + "]"
+    )
+
+
 class ChatService:
     def __init__(
         self,
@@ -222,6 +253,7 @@ class ChatService:
         persona_projection_provider: PersonaProjectionProvider | None = None,
         sandbox_persona_projection_provider: SandboxPersonaProjectionProvider | None = None,
         world_context_provider: WorldContextProvider | None = None,
+        camera_context_provider: CameraContextProvider | None = None,
     ) -> None:
         self.settings = settings
         self.client = client or DeepSeekClient(settings)
@@ -235,6 +267,7 @@ class ChatService:
         self.persona_projection_provider = persona_projection_provider
         self.sandbox_persona_projection_provider = sandbox_persona_projection_provider
         self.world_context_provider = world_context_provider
+        self.camera_context_provider = camera_context_provider
         if self.world_context_provider is None and settings.world_awareness_enabled:
             from app.world.brain import WorldBrainCoordinator
             from app.world.runtime import build_world_runtime
@@ -1015,6 +1048,13 @@ class ChatService:
         if world_context.rendered_text:
             system_prompt = system_prompt + "\n" + world_context.rendered_text
         system_prompt = system_prompt + "\n" + render_head_world_state(head_world_state)
+        camera_block = _camera_context_block(
+            self.camera_context_provider,
+            user_input=user_input,
+            relationship_role=relationship_context.role,
+        )
+        if camera_block:
+            system_prompt = system_prompt + "\n" + camera_block
         if response_style_instruction:
             system_prompt = system_prompt + "\n" + response_style_instruction.strip()
         prompt_text = system_prompt + "\n" + persona_prompt.user_prompt

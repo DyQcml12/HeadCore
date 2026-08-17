@@ -4,6 +4,7 @@ import asyncio
 import os
 import shutil
 import sys
+import threading
 
 if sys.platform == "win32":
     # psycopg async needs a selector-based loop (add_reader); uvicorn's default
@@ -21,7 +22,7 @@ from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
 
 from app.audio.chat_input import prepare_audio_chat_input
-from app.audio.file_service import save_upload_to_temp, transcribe_audio_file
+from app.audio.file_service import save_upload_to_temp, transcribe_audio_file, warmup_audio_pipeline
 from app.audio.schemas import AsrFileResponse, AudioChatFileResponse, PreparedAudioChatFileResponse
 from app.audio.websocket_routes import router as audio_router
 from app.auth.identity import (
@@ -333,6 +334,8 @@ def build_runtime_chat_service(*, repository=None) -> ChatService:  # type: igno
         kwargs["memory_projection_provider"] = memory_projection_provider
     if persona_runtime_projection_provider is not None:
         kwargs["persona_projection_provider"] = persona_runtime_projection_provider
+    if camera_control_runtime is not None:
+        kwargs["camera_context_provider"] = camera_control_runtime.evidence_store
     service = ChatService(settings, **kwargs)
     service.sandbox_persona_projection_provider = sandbox_persona_service
     return service
@@ -980,6 +983,16 @@ app.include_router(
         _resolve_sandbox_persona_owner,
     )
 )
+
+
+@app.on_event("startup")
+async def _warmup_audio_on_startup() -> None:
+    if settings.audio_warmup_enabled:
+        threading.Thread(
+            target=warmup_audio_pipeline,
+            name="audio-warmup",
+            daemon=True,
+        ).start()
 
 
 if __name__ == "__main__":

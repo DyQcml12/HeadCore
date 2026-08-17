@@ -5,7 +5,7 @@
 - 项目主线：HeadCore（唯一认知主体）为核心、唯一内置人格 `hutao_v1`（胡桃）的多模态角色陪伴后端。当前公开形态是 FastAPI Core HTTP + Web Desk PWA（`app/static/web/studio`）+ OpenAI-Compatible 接口 + 文件语音识别 + 原生微信小程序（`miniprogram/`）。
 - 已退役并从源码移除：QQ/微信 Bot（NapCat/OneBot/Hermes）、CosyVoice2 语音克隆训练、Bert-VITS2 TTS provider、Ollama 视觉（`app/vision`）、MySQL V1 后端入口、旧 Desk UI（`app/static/desk`）、旧架构手册与旧出版工具链、新闻渲染浏览器方案。完整清理清单与理由见 `logs/project-cleanup/2026-08-14/project-cleanup-report.md`。
 - `app/storage/mysql_repository.py` 保留：它是 Database V2、PostgreSQL、auth、knowledge、persona_management 的共享 SQL 传输基类，不是独立可删除的"V1 后端"。
-- 实测基线（2026-08-15，`python -m pytest tests -q -p no:cacheprovider`）：`891 passed, 2 skipped`（在 883 基础上新增认证双库选主 2 条、零主库拒绝 1 条、重复邮箱翻译 3 条、TTS 计划参考 1 条、密码策略透传 1 条、verify 限流 1 条）。
+- 实测基线（2026-08-17，`python -m pytest tests -q -p no:cacheprovider`）：`911 passed, 2 skipped`（在 902 基础上新增 GSV 守护 7 条 + ASR 预热 2 条）。
 - Git 现状：本地仓库含旧历史 2 个提交（曾跟踪模型权重，.git 约 8.9 GB，含 LFS 5.85 GB）+ 清理后的 3 个新提交；旧远程 origin/upstream（原指向 https://github.com/DyQcml12/HutaoChatCore.git）已移除。上传 GitHub 使用导出的 code-only 新仓库（`..\HutaoChatCore-code-only`，约 8MB）推送；旧仓库只保留在本机，绝不 push。
 - 文档唯一编辑源：根目录 `HUTAOCHATCORE_COMPLETE_ARCHITECTURE_AND_ACCEPTANCE_MANUAL.md`（其 `docs/` 副本与根目录同步）。技术审计报告：`docs/HUTAOCHATCORE_TECHNICAL_REPORT.md`。产品路线：`docs/WEB_PRODUCT_ROADMAP.md`。
 - 历史开发交接记录已归档到 `docs/history/agent-handoff-archive.md`（只读），不再追加；新交接只写在本文档"当前对话交接"一节。
@@ -285,6 +285,20 @@ cmd /c "启动控制中心.bat --check-only"
 - 根因：账号卡在 pending_email_verification（验证码邮件落在本地调试 SMTP，用户收不到）；注册查重/登录放行/重置防枚举三条逻辑各自正确但组合起来像“逻辑坏了”；验证码 token_urlsafe(32) 过长。
 - 修复：新增 `app/auth/codes.py::new_six_digit_code`，注册与重置验证码统一 6 位数字，邮件文案同步；`/verify-email` 与 `/password-reset/confirm` 增加全局防爆破限流（30 次/10 分钟、封 30 分钟，subject_kind=verification_code/password_reset_code）；新增迁移 `migrations/v2/007_public_web_code_limits.sql`（MySQL ENUM 扩展，手动应用并记录）与 `migrations/postgres/002_public_web_code_limits.sql`（VARCHAR(24)+CHECK 扩展，applier 应用）；清除该邮箱的 pending 脏数据。
 - 验证：注册→6 位码→验证→登录全链路 200；密码重置 6 位码全链路 200；防爆破 429 有测试覆盖；全量 `891 passed, 2 skipped`。报告 logs/project-cleanup/2026-08-15/six-digit-code-and-stuck-account-report.md。
+### 2026-08-17 视觉 L1 接线：摄像头标签层接入对话证据链
+
+- 任务：T4 指出的“标签层与对话断开”落地修复（L1 本地受限标签接进对话，零新增算力与隐私面）。
+- 实现：新增 `app/camera/evidence_store.py::CameraEvidenceStore`（仅存时序确认后的白名单标签上下文，TTL 300s，渲染为 attention 兼容格式，停会话即清）；`app/camera/router.py` 的 `CameraControlRuntime` 增加 `evidence_store` 并在采集回调写入；`app/services/chat_service.py` 新增可选 `camera_context_provider` + `_camera_context_block`（显式画面问题注入标签、标签问题匹配、无上下文给澄清话术、无关/blocked/无 provider 零变化，注入块禁止推断情绪/身份/意图）；`app/main.py` 装配 provider。
+- 测试：新增 `tests/camera/test_evidence_store.py` 5 条 + `tests/test_chat_camera_context.py` 6 条；修正 test_api.py 12 处 ChatService fake 接受 **kwargs。全量 `902 passed, 2 skipped`（891 基线 + 11）。报告 logs/project-cleanup/2026-08-15/vision-l1-wiring-report.md。
+- 边界：L2 场景状态机与 L3 VLM 待后续任务；主动观察仍默认关闭。
+### 2026-08-17 真实邮箱 SMTP + GSV 守护 + ASR 预热
+
+- 真实邮箱：用户提供 QQ 授权码后 `.env` 切到 smtp.qq.com:587 STARTTLS；直连发信冒烟成功；8010 复测三开关全开。本地调试收件器自动启动条件自然失效。公网前仍需图形验证码+每日发送上限（危险清单）。
+- GSV 守护：新增 `app/control/service_watchdog.py::GptSovitsWatchdog`（连续失败阈值/重启宽限 120s/每小时上限 5，经控制中心 start_service 重启）与 `scripts/watch_gpt_sovits.py`；启动器在 PUBLIC_WEB_TTS_ENABLED=true 时后台拉起，日志 logs/service_watchdog.log；实测 --once healthy；7 条策略测试。修复 bat 两处反斜杠丢失（scripts\dev_smtp_sink.py / logs\service_watchdog.log）。
+- ASR 预热：`file_service.warmup_audio_pipeline` + main.py startup 钩子（AUDIO_WARMUP_ENABLED 默认 false，本机 .env 已固化 true）：后台线程预加载 ASR/情绪引擎（0.5s 静音探针），冷启动 74s 成本转后台；引擎已有模块级缓存。3 条测试；conftest 钉 false。
+- 全量 `911 passed, 2 skipped`（902 基线 + 9）。报告 logs/project-cleanup/2026-08-15/smtp-watchdog-warmup-report.md。
+
+
 
 
 

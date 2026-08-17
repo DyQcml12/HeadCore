@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from fastapi import APIRouter, Header, HTTPException
 
 from app.camera.contracts import CameraObservation, CameraSession, CameraSessionStartRequest
+from app.camera.evidence_store import CameraEvidenceStore
 from app.camera.normalization import camera_observation_to_world_observation
 from app.camera.local_runtime import LocalCaptureController, LocalVisionAnalyzer
 from app.camera.session_manager import CameraSessionManager
@@ -18,6 +19,7 @@ class CameraControlRuntime:
     manager: CameraSessionManager
     capture: LocalCaptureController
     temporal_state: CameraTemporalState
+    evidence_store: CameraEvidenceStore
 
     def start_consent_session(
         self,
@@ -42,6 +44,7 @@ class CameraControlRuntime:
         session = self.manager.stop(session_id, owner_key=owner_key)
         if session is not None:
             self.temporal_state.remove_session(session_id)
+            self.evidence_store.remove_session(session_id)
         return session
 
     def stop_owner_sessions(self, *, owner_key: str) -> None:
@@ -62,6 +65,9 @@ def build_camera_control_runtime(settings: Settings) -> CameraControlRuntime:
         confirmation_count=settings.camera_temporal_confirmation_count,
         window_seconds=settings.camera_temporal_window_seconds,
     )
+    evidence_store = CameraEvidenceStore(
+        max_age_seconds=settings.camera_observation_ttl_seconds,
+    )
     def analyzer_factory() -> LocalVisionAnalyzer:
         return LocalVisionAnalyzer(
             yolo_model_path=settings.camera_yolo_model_path,
@@ -74,6 +80,8 @@ def build_camera_control_runtime(settings: Settings) -> CameraControlRuntime:
             observation, ttl_seconds=settings.camera_observation_ttl_seconds
         )
         temporal_update = temporal_state.observe(observation)
+        if temporal_update is not None:
+            evidence_store.record_update(temporal_update)
 
     # The callback only validates and normalizes transient data; it retains no frames or observations.
     capture = LocalCaptureController(
@@ -86,6 +94,7 @@ def build_camera_control_runtime(settings: Settings) -> CameraControlRuntime:
         manager=manager,
         capture=capture,
         temporal_state=temporal_state,
+        evidence_store=evidence_store,
     )
 
 

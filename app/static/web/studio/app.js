@@ -405,7 +405,7 @@ async function sendAudio(blob) {
   try {
     const data = await requestWithinTimeout(
       (signal) => jsonFetch("/api/v1/audio/chat/prepare/file", { method: "POST", body: form, signal }),
-      12_000,
+      45_000,
     );
     finishThinkingStatus(thinking);
     if (data.chat_bypassed_due_to_asr_quality) {

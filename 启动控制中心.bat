@@ -55,7 +55,13 @@ if !ERRORLEVEL! EQU 0 (
 rem Local dev SMTP sink for email verification (only when .env targets it).
 findstr /b /c:"SMTP_HOST=127.0.0.1" ".env" >nul 2>&1
 if !ERRORLEVEL! EQU 0 (
-    powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "if (-not (Get-NetTCPConnection -LocalPort 1025 -State Listen -ErrorAction SilentlyContinue)) { Start-Process -WindowStyle Hidden -FilePath '%PYTHON_EXE%' -ArgumentList 'scriptsdev_smtp_sink.py' -WorkingDirectory '%PROJECT_DIR%' }"
+    powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "if (-not (Get-NetTCPConnection -LocalPort 1025 -State Listen -ErrorAction SilentlyContinue)) { Start-Process -WindowStyle Hidden -FilePath '%PYTHON_EXE%' -ArgumentList 'scripts\dev_smtp_sink.py' -WorkingDirectory '%PROJECT_DIR%' }"
+)
+
+rem GPT-SoVITS watchdog (only when web TTS is enabled).
+findstr /b /c:"PUBLIC_WEB_TTS_ENABLED=true" ".env" >nul 2>&1
+if !ERRORLEVEL! EQU 0 (
+    powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Start-Process -WindowStyle Hidden -FilePath '%PYTHON_EXE%' -ArgumentList 'scripts\watch_gpt_sovits.py' -WorkingDirectory '%PROJECT_DIR%' -RedirectStandardOutput 'logs\service_watchdog.log' -RedirectStandardError 'logs\service_watchdog.err.log'"
 )
 
 "%PYTHON_EXE%" -m app.main
