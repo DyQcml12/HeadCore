@@ -11,8 +11,10 @@ HIDDEN_TEXT = "[\u5df2\u9690\u85cf]"
 
 
 LOG_TARGETS: dict[str, Path] = {
-    "hutao_core": SERVICE_LOG_DIR / "hutao_core.log",
-    "gpt_sovits": SERVICE_LOG_DIR / "gpt_sovits.log",
+    # Keep reader targets aligned with the filenames used by service_manager.
+    # A mismatch here makes a running service look as if it has no logs.
+    "hutao_core": SERVICE_LOG_DIR / "core_api.log",
+    "gpt_sovits": SERVICE_LOG_DIR / "gpt_sovits_api.log",
 }
 
 

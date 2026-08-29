@@ -9,11 +9,14 @@ export function useLandingAnimations(rootRef, reduceMotion) {
     const root = rootRef.current;
     if (!root) return undefined;
 
+    let media;
     const context = gsap.context(() => {
       if (reduceMotion) {
-        gsap.set(".hero-word, [data-hero-reveal], [data-scroll-reveal]", {
+        gsap.set(".hero-word, [data-hero-reveal], .hero-status, .scroll-cue, [data-scroll-reveal]", {
           clearProps: "all",
           opacity: 1,
+          scale: 1,
+          y: 0,
         });
         return;
       }
@@ -22,23 +25,26 @@ export function useLandingAnimations(rootRef, reduceMotion) {
       entrance
         .fromTo(
           ".hero-word",
-          { opacity: 0, y: 80 },
-          { opacity: 1, y: 0, duration: 1.05, stagger: 0.05 },
+          { opacity: 0, y: 38 },
+          { opacity: 1, y: 0, duration: 0.68, stagger: 0.026 },
         )
         .fromTo(
-          "[data-hero-reveal]",
-          { opacity: 0, y: 24 },
-          { opacity: 1, y: 0, duration: 0.75, stagger: 0.1 },
-          "-=0.55",
+          ".hero-kicker, .hero-description, .hero-actions, .hero-status, .scroll-cue",
+          { opacity: 0, y: 18 },
+          { opacity: 1, y: 0, duration: 0.52, stagger: 0.08 },
+          "-=0.48",
         );
 
-      ScrollTrigger.create({
-        trigger: ".hero-pin",
-        start: "top top",
-        end: "+=45%",
-        pin: true,
-        pinSpacing: false,
-        anticipatePin: 1,
+      media = gsap.matchMedia();
+      media.add("(min-width: 768px)", () => {
+        ScrollTrigger.create({
+          trigger: ".hero-pin",
+          start: "top top",
+          end: "+=34%",
+          pin: true,
+          pinSpacing: true,
+          anticipatePin: 1,
+        });
       });
 
       gsap.utils.toArray("[data-scroll-reveal]").forEach((element) => {
@@ -50,6 +56,7 @@ export function useLandingAnimations(rootRef, reduceMotion) {
             scale: 1,
             y: 0,
             duration: 0.85,
+            immediateRender: false,
             ease: "power3.out",
             scrollTrigger: {
               trigger: element,
@@ -59,8 +66,12 @@ export function useLandingAnimations(rootRef, reduceMotion) {
           },
         );
       });
+
     }, root);
 
-    return () => context.revert();
+    return () => {
+      media?.revert();
+      context.revert();
+    };
   }, [rootRef, reduceMotion]);
 }
