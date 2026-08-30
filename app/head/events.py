@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from app.head.adaptation import is_policy_reset_request
 from app.head.contracts import (
     FeedbackOutcome,
@@ -35,14 +37,25 @@ async def load_head_event_context(
     *,
     user_id: str,
 ) -> HeadEventContext:
+    memory_results = await asyncio.gather(
+        *(
+            repository.list_memories(
+                user_id=user_id,
+                memory_types=[memory_type],
+                limit=12 if memory_type == "head_feedback" else 1,
+            )
+            for memory_type in HEAD_EVENT_MEMORY_TYPES
+        )
+    )
+    episodic_events, cognitive_facts, world_model, long_term_plan = await asyncio.gather(
+        load_episodic_events(repository, user_id=user_id),
+        load_cognitive_facts(repository, user_id=user_id),
+        load_head_world_model(repository, user_id=user_id),
+        load_long_term_plan(repository, user_id=user_id),
+    )
     latest_by_type: dict[str, str] = {}
     feedback_records = []
-    for memory_type in HEAD_EVENT_MEMORY_TYPES:
-        records = await repository.list_memories(
-            user_id=user_id,
-            memory_types=[memory_type],
-            limit=12 if memory_type == "head_feedback" else 1,
-        )
+    for memory_type, records in zip(HEAD_EVENT_MEMORY_TYPES, memory_results):
         if records:
             latest_by_type[memory_type] = records[-1].content
         if memory_type == "head_feedback":
@@ -56,15 +69,15 @@ async def load_head_event_context(
             HeadEventRecord(content=record.content, created_at=record.created_at)
             for record in feedback_records
         ),
-        episodic_events=await load_episodic_events(repository, user_id=user_id),
+        episodic_events=episodic_events,
         policy_reset_at=(
             latest_by_type.get("head_policy_reset")
             if "head_policy_reset" in latest_by_type
             else None
         ),
-        cognitive_facts=await load_cognitive_facts(repository, user_id=user_id),
-        world_model=await load_head_world_model(repository, user_id=user_id),
-        long_term_plan=await load_long_term_plan(repository, user_id=user_id),
+        cognitive_facts=cognitive_facts,
+        world_model=world_model,
+        long_term_plan=long_term_plan,
     )
 
 

@@ -28,6 +28,14 @@ def test_dialogue_policy_constrains_only_chatty_replies() -> None:
     assert constrain_reply_text(long_reply, user_input="帮我写一个完整方案", max_chars=35, channel="qq") == long_reply
 
 
+def test_dialogue_policy_treats_normal_chat_length_as_soft_preference() -> None:
+    casual = build_dialogue_decision("干嘛呢", channel="qq")
+    support = build_dialogue_decision("今天有点难受", channel="qq")
+
+    assert casual.max_chars is None
+    assert support.max_chars is None
+
+
 def test_core_expression_policy_scores_sticker_intent_and_blocks_technical_context() -> None:
     settings = ExpressionSettings(
         sticker_auto_reply_enabled=True,

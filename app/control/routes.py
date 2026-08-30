@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import subprocess
 from dataclasses import asdict
-from pathlib import Path
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -15,6 +14,11 @@ from app.control.health_checks import build_control_status
 from app.control.log_reader import list_log_targets, read_log_tail
 from app.control.service_manager import list_services, start_service, stop_service
 from app.control.test_runner import list_control_tests, run_control_test
+from app.control.access import (
+    authorize_control_request,
+    control_page_response,
+    control_web_auth_enabled,
+)
 from app.core.config import PROJECT_ROOT
 from app.core.config import load_settings
 from app.database_control.mysql_adapter import build_mysql_database_control_adapter
@@ -28,7 +32,6 @@ from app.storage.v2_relationship_service import parse_bootstrap_ids
 
 router = APIRouter(tags=["control-center"])
 STATIC_ROOT = PROJECT_ROOT / "app" / "static" / "control"
-WORLD_MODEL_DOCUMENT = PROJECT_ROOT / "docs" / "WORLD_MODEL_AND_PROJECT_CAPABILITIES.md"
 _operations_settings = load_settings()
 _operations_database_repository = build_mysql_database_control_adapter(_operations_settings)
 
@@ -89,46 +92,85 @@ class ConfigUpdateRequest(BaseModel):
 
 
 @router.get("/control", include_in_schema=False)
-async def control_page() -> FileResponse:
-    return FileResponse(STATIC_ROOT / "index.html")
+async def control_page(request: Request):
+    return await control_page_response(request, FileResponse(STATIC_ROOT / "index.html"))
 
 
 @router.get("/control/app.js", include_in_schema=False)
-async def control_app_js() -> FileResponse:
-    return FileResponse(STATIC_ROOT / "app.js", media_type="application/javascript")
-
-
-@router.get("/control/style.css", include_in_schema=False)
-async def control_style_css() -> FileResponse:
-    return FileResponse(STATIC_ROOT / "style.css", media_type="text/css")
-
-
-@router.get("/control/docs/world-model", include_in_schema=False)
-async def control_world_model_document() -> FileResponse:
-    return FileResponse(WORLD_MODEL_DOCUMENT, media_type="text/markdown; charset=utf-8")
-
-
-@router.get("/control/assets/control-atmosphere.webp", include_in_schema=False)
-async def control_atmosphere_asset() -> FileResponse:
-    return FileResponse(
-        STATIC_ROOT / "assets" / "control-atmosphere.webp",
-        media_type="image/webp",
+async def control_app_js(request: Request):
+    return await control_page_response(
+        request, FileResponse(STATIC_ROOT / "app.js", media_type="application/javascript")
     )
 
 
+@router.get("/control/style.css", include_in_schema=False)
+async def control_style_css(request: Request):
+    return await control_page_response(
+        request, FileResponse(STATIC_ROOT / "style.css", media_type="text/css")
+    )
+
+
+@router.get("/control/assets/control-atmosphere.webp", include_in_schema=False)
+async def control_atmosphere_asset(request: Request):
+    return await control_page_response(
+        request,
+        FileResponse(
+            STATIC_ROOT / "assets" / "control-atmosphere.webp",
+            media_type="image/webp",
+        ),
+    )
+
+
+@router.get("/api/control/access")
+async def control_access(request: Request) -> dict[str, object]:
+    actor = await authorize_control_request(
+        request,
+        operation="control_access_read",
+        control_write_guard=_control_write_guard,
+    )
+    account = getattr(request.state, "control_web_admin_account", None)
+    if account is not None:
+        return {
+            "authenticated": True,
+            "authorized": True,
+            "role": "owner_admin",
+            "email": account.profile.email_normalized,
+            "display_name": account.profile.display_name,
+            "session_expires_at": account.session_expires_at.isoformat(),
+            "mode": "web_session",
+            "scope": "local_control_plane",
+        }
+    return {
+        "authenticated": actor is not None,
+        "authorized": actor is not None or not control_web_auth_enabled(),
+        "role": "internal_actor" if actor is not None else "local_development",
+        "mode": "internal_header" if actor is not None else "local_no_auth",
+        "scope": "local_control_plane",
+    }
+
+
 @router.get("/api/control/status")
-async def control_status() -> dict[str, object]:
+async def control_status(request: Request) -> dict[str, object]:
+    await authorize_control_request(
+        request, operation="control_status_read", control_write_guard=_control_write_guard
+    )
     return build_control_status()
 
 
 @router.get("/api/control/operations/status")
-async def control_operations_status() -> dict[str, object]:
+async def control_operations_status(request: Request) -> dict[str, object]:
+    await authorize_control_request(
+        request, operation="operations_status_read", control_write_guard=_control_write_guard
+    )
     snapshot = await build_operations_status_service().snapshot()
     return jsonable_encoder(asdict(snapshot))
 
 
 @router.get("/api/control/operations/test-reports")
-async def control_operations_test_reports(limit: int = 10) -> dict[str, object]:
+async def control_operations_test_reports(request: Request, limit: int = 10) -> dict[str, object]:
+    await authorize_control_request(
+        request, operation="test_reports_read", control_write_guard=_control_write_guard
+    )
     report_root = PROJECT_ROOT / "logs" / "test-runs"
     paths = sorted(
         report_root.glob("**/*.md") if report_root.exists() else (),
@@ -140,22 +182,29 @@ async def control_operations_test_reports(limit: int = 10) -> dict[str, object]:
 
 
 @router.get("/api/control/operations/errors")
-async def control_operations_errors() -> dict[str, object]:
+async def control_operations_errors(request: Request) -> dict[str, object]:
+    await authorize_control_request(
+        request, operation="operations_errors_read", control_write_guard=_control_write_guard
+    )
     return {"errors": jsonable_encoder([])}
 
 
 @router.get("/api/control/operations/actor")
 async def control_operations_actor(
+    request: Request,
     x_hutao_actor_platform: str | None = Header(default=None),
     x_hutao_actor_user_id: str | None = Header(default=None),
     x_hutao_actor_group_id: str | None = Header(default=None),
 ) -> dict[str, object]:
-    configured = bool(x_hutao_actor_platform and x_hutao_actor_user_id)
-    actor = await _control_write_guard.verify(
+    actor = await authorize_control_request(
+        request,
+        operation="operations_actor_read",
         platform=x_hutao_actor_platform,
         user_id=x_hutao_actor_user_id,
         group_id=x_hutao_actor_group_id,
+        control_write_guard=_control_write_guard,
     )
+    configured = bool(x_hutao_actor_platform and x_hutao_actor_user_id)
     return {
         "configured": configured,
         "authorized": actor is not None,
@@ -165,15 +214,19 @@ async def control_operations_actor(
 
 @router.get("/api/control/operations/audits")
 async def control_operations_audits(
+    request: Request,
     limit: int = 20,
     x_hutao_actor_platform: str | None = Header(default=None),
     x_hutao_actor_user_id: str | None = Header(default=None),
     x_hutao_actor_group_id: str | None = Header(default=None),
 ) -> dict[str, object]:
-    actor = await _control_write_guard.verify(
+    actor = await authorize_control_request(
+        request,
+        operation="operations_audits_read",
         platform=x_hutao_actor_platform,
         user_id=x_hutao_actor_user_id,
         group_id=x_hutao_actor_group_id,
+        control_write_guard=_control_write_guard,
     )
     if actor is None:
         raise HTTPException(status_code=403, detail={"code": "admin_required"})
@@ -187,7 +240,10 @@ async def control_operations_audits(
 
 
 @router.get("/api/control/config")
-async def control_config() -> dict[str, object]:
+async def control_config(request: Request) -> dict[str, object]:
+    await authorize_control_request(
+        request, operation="control_config_read", control_write_guard=_control_write_guard
+    )
     store = EnvConfigStore()
     values = store.read_public_values()
     return {
@@ -205,15 +261,26 @@ async def control_config() -> dict[str, object]:
 
 @router.post("/api/control/config")
 async def update_control_config(
-    request: ConfigUpdateRequest,
+    request: Request,
+    payload: ConfigUpdateRequest,
     x_hutao_actor_platform: str | None = Header(default=None),
     x_hutao_actor_user_id: str | None = Header(default=None),
     x_hutao_actor_group_id: str | None = Header(default=None),
 ) -> dict[str, object]:
     operation = "control_config_update"
-    actor = await require_control_admin(operation, x_hutao_actor_platform, x_hutao_actor_user_id, x_hutao_actor_group_id)
+    actor = await authorize_control_request(
+        request,
+        operation=operation,
+        write=True,
+        platform=x_hutao_actor_platform,
+        user_id=x_hutao_actor_user_id,
+        group_id=x_hutao_actor_group_id,
+        control_write_guard=_control_write_guard,
+    )
+    if actor is None:
+        raise HTTPException(status_code=403, detail={"code": "admin_required"})
     try:
-        backup = EnvConfigStore().update_values(request.values)
+        backup = EnvConfigStore().update_values(payload.values)
     except ValueError as exc:
         await audit_control_result(actor, operation, False, "invalid_request")
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -221,17 +288,23 @@ async def update_control_config(
     return {
         "saved": True,
         "backup_path": str(backup) if backup else "",
-        "restart_required": bool(request.values),
+        "restart_required": bool(payload.values),
     }
 
 
 @router.get("/api/control/logs")
-async def control_logs() -> dict[str, object]:
+async def control_logs(request: Request) -> dict[str, object]:
+    await authorize_control_request(
+        request, operation="logs_read", control_write_guard=_control_write_guard
+    )
     return {"targets": list_log_targets()}
 
 
 @router.get("/api/control/logs/{log_id}")
-async def control_log_tail(log_id: str, max_lines: int = 120) -> dict[str, object]:
+async def control_log_tail(request: Request, log_id: str, max_lines: int = 120) -> dict[str, object]:
+    await authorize_control_request(
+        request, operation="log_tail_read", control_write_guard=_control_write_guard
+    )
     try:
         return read_log_tail(log_id, max_lines=max_lines)
     except ValueError as exc:
@@ -239,19 +312,33 @@ async def control_log_tail(log_id: str, max_lines: int = 120) -> dict[str, objec
 
 
 @router.get("/api/control/services")
-async def control_services() -> dict[str, object]:
+async def control_services(request: Request) -> dict[str, object]:
+    await authorize_control_request(
+        request, operation="services_read", control_write_guard=_control_write_guard
+    )
     return {"services": list_services()}
 
 
 @router.post("/api/control/services/{service_id}/start")
 async def start_control_service(
+    request: Request,
     service_id: str,
     x_hutao_actor_platform: str | None = Header(default=None),
     x_hutao_actor_user_id: str | None = Header(default=None),
     x_hutao_actor_group_id: str | None = Header(default=None),
 ) -> dict[str, object]:
     operation = "service_start"
-    actor = await require_control_admin(operation, x_hutao_actor_platform, x_hutao_actor_user_id, x_hutao_actor_group_id)
+    actor = await authorize_control_request(
+        request,
+        operation=operation,
+        write=True,
+        platform=x_hutao_actor_platform,
+        user_id=x_hutao_actor_user_id,
+        group_id=x_hutao_actor_group_id,
+        control_write_guard=_control_write_guard,
+    )
+    if actor is None:
+        raise HTTPException(status_code=403, detail={"code": "admin_required"})
     try:
         result = start_service(service_id)
     except (ValueError, FileNotFoundError) as exc:
@@ -263,13 +350,24 @@ async def start_control_service(
 
 @router.post("/api/control/services/{service_id}/stop")
 async def stop_control_service(
+    request: Request,
     service_id: str,
     x_hutao_actor_platform: str | None = Header(default=None),
     x_hutao_actor_user_id: str | None = Header(default=None),
     x_hutao_actor_group_id: str | None = Header(default=None),
 ) -> dict[str, object]:
     operation = "service_stop"
-    actor = await require_control_admin(operation, x_hutao_actor_platform, x_hutao_actor_user_id, x_hutao_actor_group_id)
+    actor = await authorize_control_request(
+        request,
+        operation=operation,
+        write=True,
+        platform=x_hutao_actor_platform,
+        user_id=x_hutao_actor_user_id,
+        group_id=x_hutao_actor_group_id,
+        control_write_guard=_control_write_guard,
+    )
+    if actor is None:
+        raise HTTPException(status_code=403, detail={"code": "admin_required"})
     try:
         result = stop_service(service_id)
     except ValueError as exc:
@@ -280,19 +378,33 @@ async def stop_control_service(
 
 
 @router.get("/api/control/tests")
-async def control_tests() -> dict[str, object]:
+async def control_tests(request: Request) -> dict[str, object]:
+    await authorize_control_request(
+        request, operation="control_tests_read", control_write_guard=_control_write_guard
+    )
     return {"tests": list_control_tests()}
 
 
 @router.post("/api/control/tests/{test_id}/run")
 async def run_control_test_endpoint(
+    request: Request,
     test_id: str,
     x_hutao_actor_platform: str | None = Header(default=None),
     x_hutao_actor_user_id: str | None = Header(default=None),
     x_hutao_actor_group_id: str | None = Header(default=None),
 ) -> dict[str, object]:
     operation = "control_test_run"
-    actor = await require_control_admin(operation, x_hutao_actor_platform, x_hutao_actor_user_id, x_hutao_actor_group_id)
+    actor = await authorize_control_request(
+        request,
+        operation=operation,
+        write=True,
+        platform=x_hutao_actor_platform,
+        user_id=x_hutao_actor_user_id,
+        group_id=x_hutao_actor_group_id,
+        control_write_guard=_control_write_guard,
+    )
+    if actor is None:
+        raise HTTPException(status_code=403, detail={"code": "admin_required"})
     try:
         result = run_control_test(test_id)
     except ValueError as exc:

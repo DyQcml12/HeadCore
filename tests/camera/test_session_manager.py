@@ -2,7 +2,12 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.camera.contracts import CameraObservation, CameraSessionStartRequest, CameraSessionStatus
+from app.camera.contracts import (
+    CameraObservation,
+    CameraSessionMode,
+    CameraSessionStartRequest,
+    CameraSessionStatus,
+)
 from app.camera.session_manager import CameraSessionManager
 
 
@@ -22,6 +27,27 @@ def test_disabled_camera_cannot_create_a_session() -> None:
     )
     with pytest.raises(PermissionError, match="disabled"):
         manager.start(CameraSessionStartRequest(consent_granted=True), owner_key="owner")
+
+
+def test_demo_session_requires_the_explicit_demo_switch() -> None:
+    request = CameraSessionStartRequest(consent_granted=True, mode=CameraSessionMode.DEMO)
+    disabled = CameraSessionManager(
+        perception_enabled=False,
+        local_capture_enabled=False,
+        max_session_seconds=60,
+    )
+    with pytest.raises(PermissionError, match="demo"):
+        disabled.start(request, owner_key="owner")
+
+    enabled = CameraSessionManager(
+        perception_enabled=False,
+        local_capture_enabled=False,
+        demo_enabled=True,
+        max_session_seconds=60,
+    )
+    session = enabled.start(request, owner_key="owner")
+    assert session.mode == CameraSessionMode.DEMO
+    assert session.demo_scenario == "desk_work"
 
 
 @pytest.mark.parametrize(

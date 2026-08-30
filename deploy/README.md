@@ -25,6 +25,6 @@ port 6333 to the public network.
 docker compose --env-file deploy/.env.staging -f deploy/compose.staging.yml --profile semantic-memory up -d qdrant semantic-memory-worker
 ```
 
-See `docs/deployment/LOCAL_MODEL_LAYOUT.md` before enabling this profile. The
-worker will create or validate the collection and synchronize only derived
-vectors through the MySQL outbox.
+Review the semantic-memory paths and limits in `.env.example` before enabling
+this profile. The worker will create or validate the collection and synchronize
+only derived vectors through the MySQL outbox.

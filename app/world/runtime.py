@@ -7,6 +7,7 @@ from app.core.config import Settings
 from app.world.adapters.amap import AmapWorldSourceAdapter
 from app.world.adapters.news import GdeltNewsAdapter, GovCnPolicyAdapter, OfficialRssNewsAdapter
 from app.world.adapters.qweather import QweatherWeatherAdapter
+from app.world.adapters.search import WebSearchAdapter
 from app.world.cache import AsyncTTLCache
 from app.world.contracts import (
     DataSensitivity,
@@ -36,6 +37,9 @@ class WorldRuntimeStatus:
     news_enabled_count: int
     policy_registered_count: int
     policy_enabled_count: int
+    search_registered: bool
+    search_enabled: bool
+    search_key_configured: bool
 
 
 class WorldRuntime:
@@ -78,6 +82,9 @@ class WorldRuntime:
             news_enabled_count=self._news_enabled_count,
             policy_registered_count=self._policy_registered_count,
             policy_enabled_count=self._policy_enabled_count,
+            search_registered=True,
+            search_enabled=self._settings.world_awareness_enabled and self._settings.web_search_enabled,
+            search_key_configured=bool(self._settings.web_search_api_key),
         )
 
     async def locate_public_ip(
@@ -233,6 +240,22 @@ class WorldRuntime:
             max_items=max_items,
         )
 
+    async def search(
+        self,
+        query: str,
+        *,
+        limit: int = 6,
+    ) -> WorldAcquisitionResult:
+        return await self._service.acquire(
+            WorldQuery(
+                source_id="web-search",
+                capability=WorldSourceCapability.WEB_SEARCH,
+                parameters={"query": query, "limit": str(limit)},
+                ttl_seconds=self._settings.web_search_cache_ttl_seconds,
+                cache_partition="public-search",
+            )
+        )
+
 
 def build_world_runtime(
     settings: Settings,
@@ -268,6 +291,17 @@ def build_world_runtime(
             legal_approved=settings.qweather_source_legal_approved,
             timeout_seconds=settings.world_fetch_timeout_seconds,
             max_response_bytes=settings.world_fetch_max_bytes,
+        )
+    )
+    registry.register(
+        WebSearchAdapter(
+            provider=settings.web_search_provider,
+            api_key=settings.web_search_api_key,
+            enabled=settings.world_awareness_enabled and settings.web_search_enabled,
+            legal_approved=settings.web_search_enabled,
+            timeout_seconds=settings.world_fetch_timeout_seconds,
+            max_response_bytes=settings.world_fetch_max_bytes,
+            max_results=settings.web_search_max_results,
         )
     )
     manifest_path = Path(settings.world_official_source_manifest)
@@ -333,6 +367,12 @@ def build_world_runtime(
         else:
             news_registered_count += 1
             news_enabled_count += int(enabled and entry.legal_approved)
+    unbacked_source_ids = (enabled_source_ids | approved_source_ids) - set(news_ttl_by_source)
+    if unbacked_source_ids:
+        raise ValueError(
+            "world sources configured but not backed by an adapter: "
+            + ", ".join(sorted(unbacked_source_ids))
+        )
     cache: AsyncTTLCache[WorldObservationBatch] = AsyncTTLCache(
         max_entries=settings.world_cache_max_entries
     )

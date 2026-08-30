@@ -759,6 +759,11 @@ def test_stream_reply_persists_streamed_text(tmp_path: Path) -> None:
     assert invocations[0]["used_live_api"] is True
     assert invocations[0]["request_metadata_json"]["stream"] == "true"
     assert invocations[0]["request_metadata_json"]["provider_call_type"] == "stream"
+    metadata = invocations[0]["request_metadata_json"]
+    assert float(metadata["prepare_latency_ms"]) >= 0
+    assert float(metadata["ttft_ms"]) >= 0
+    assert float(metadata["model_latency_ms"]) >= 0
+    assert float(metadata["total_latency_ms"]) >= 0
     trace = json.loads(invocations[0]["request_metadata_json"]["provider_trace"])
     assert trace[0]["success"] is True
     assert evaluations[0]["passed"] is True
@@ -1343,6 +1348,18 @@ def test_deepseek_stream_delta_parser_raises_on_error_frames() -> None:
         DeepSeekClient._extract_stream_delta('data: {"id":"x"}')
 
 
+def test_deepseek_client_reuses_http_client_within_event_loop() -> None:
+    client = DeepSeekClient(load_settings())
+
+    async def collect() -> None:
+        first = await client._get_http_client()
+        second = await client._get_http_client()
+        assert first is second
+        await client.aclose()
+
+    asyncio.run(collect())
+
+
 def test_non_stream_chat_records_provider_route_trace(tmp_path: Path) -> None:
     storage_dir = tmp_path / "storage"
     service = ChatService(
@@ -1359,6 +1376,9 @@ def test_non_stream_chat_records_provider_route_trace(tmp_path: Path) -> None:
     trace = json.loads(metadata["provider_trace"])
     assert response.provider == "deepseek"
     assert metadata["provider_route"] == "deepseek"
+    assert float(metadata["prepare_latency_ms"]) >= 0
+    assert float(metadata["model_latency_ms"]) >= 0
+    assert float(metadata["total_latency_ms"]) >= 0
     assert trace[0]["provider"] == "deepseek"
     assert trace[0]["success"] is True
 
@@ -1448,6 +1468,17 @@ def test_mind_state_infers_topic_mood_and_deescalation(tmp_path: Path) -> None:
     assert "当前应降温" in conversation.instruction
     assert self_state.mood == "calm_attentive"
     assert self_state.tension == "elevated"
+
+
+def test_weather_question_is_not_misclassified_as_frustrated() -> None:
+    conversation = build_conversation_state(
+        user_input="\u73b0\u5728\u5929\u6c14\u600e\u4e48\u6837\uff1f",
+        recent_messages=[],
+    )
+
+    assert conversation.recent_user_mood == "neutral"
+    assert conversation.should_deescalate is False
+    assert "当前应降温" not in conversation.instruction
 
 
 def test_chat_service_closes_the_action_feedback_loop(tmp_path: Path) -> None:

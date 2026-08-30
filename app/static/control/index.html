@@ -2,55 +2,61 @@
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#10151a" />
+    <meta name="robots" content="noindex,nofollow" />
     <title>HeadCore 控制台</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="/control/style.css?v=20260725-2" />
+    <link rel="stylesheet" href="/control/style.css?v=20260829-1" />
   </head>
   <body>
-    <aside class="sidebar">
-      <div class="brand"><span>HC</span><div><strong>HEADCORE</strong><small>Operations Console</small></div></div>
-      <nav aria-label="控制台导航">
-        <a href="#runtime"><b>01</b>核心运行时</a>
-        <a href="#clients"><b>02</b>客户端与发布</a>
-        <a href="#capabilities"><b>03</b>能力服务</a>
-        <a href="#diagnostics"><b>04</b>运行诊断</a>
-      </nav>
-      <p class="side-note">QQ / 微信 Bot 已移除，不再作为运行入口。</p>
-    </aside>
-    <main>
-      <header class="topbar">
-        <div><p class="eyebrow">HEADCORE · MULTI-CLIENT OPERATIONS</p><h1>运行控制台</h1><p>一个 HeadCore，为 Web、PWA 与后续原生客户端提供统一能力。</p></div>
-        <div class="header-action"><span id="lastUpdated">尚未刷新</span><button id="refreshBtn" type="button" aria-label="刷新状态">刷新</button></div>
-      </header>
-      <div id="pageError" role="alert" hidden></div>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="控制台导航">
+        <a class="brand" href="/" aria-label="返回官网">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span><strong>HEADCORE</strong><small>Operations Console</small></span>
+        </a>
+        <div class="side-mode"><span class="pulse" aria-hidden="true"></span><span>本机管理模式</span></div>
+        <nav class="side-nav">
+          <a class="is-active" href="#overview"><span class="nav-index">01</span><span>概览</span></a>
+          <a href="#runtime"><span class="nav-index">02</span><span>核心运行时</span></a>
+          <a href="#clients"><span class="nav-index">03</span><span>客户端与发布</span></a>
+          <a href="#capabilities"><span class="nav-index">04</span><span>能力服务</span></a>
+          <a href="#diagnostics"><span class="nav-index">05</span><span>运行诊断</span></a>
+          <a href="#guardrails"><span class="nav-index">06</span><span>安全边界</span></a>
+        </nav>
+        <div class="side-footer"><span>HeadCore</span><small>localhost only · no public ingress</small></div>
+      </aside>
 
-      <section id="runtime">
-        <div class="section-head"><div><p class="eyebrow">01 / RUNTIME</p><h2>核心运行时</h2><p>认知主体、模型调用、记忆与权限边界均在 HeadCore 内部。</p></div><span id="overviewState" class="state loading">读取中</span></div>
-        <div id="statusGrid" class="status-grid" aria-live="polite"></div>
-      </section>
+      <main class="main-content">
+        <header class="topbar">
+          <div class="topbar-copy"><p class="eyebrow">HEADCORE / CONTROL PLANE</p><h1>运行控制中心</h1><p>统一查看运行状态、公开边界和可审计操作。敏感配置只显示脱敏结果。</p></div>
+          <div class="topbar-actions"><div class="updated"><span class="status-dot" aria-hidden="true"></span><span id="lastUpdated">尚未刷新</span></div><button id="refreshBtn" class="button button-primary" type="button"><span aria-hidden="true">↻</span><span>刷新状态</span></button></div>
+        </header>
 
-      <section id="clients">
-        <div class="section-head"><div><p class="eyebrow">02 / CLIENTS</p><h2>客户端与发布</h2><p>客户端只负责界面和设备能力；人格、记忆、模型与安全决策不复制到端侧。</p></div></div>
-        <div class="client-grid">
-          <article><span>LIVE</span><h3>Web Desk</h3><p>浏览器中的正式用户界面，支持文本、记忆和语音交互。</p><a href="/desk">打开 Desk</a></article>
-          <article><span>LIVE</span><h3>PWA</h3><p>同一 Web Desk 的可安装、可离线启动形态。</p><a href="/desk/manifest.webmanifest">查看清单</a></article>
-          <article><span>PLAN</span><h3>桌面 / 移动 App</h3><p>后续通过同一 API 契约接入，不在控制台启动模拟服务。</p><p class="muted">等待客户端工程建立</p></article>
-          <article><span>PLAN</span><h3>微信小程序</h3><p>作为受限客户端接入 HeadCore，独立审核登录与内容安全。</p><p class="muted">等待小程序工程建立</p></article>
+        <div id="pageError" class="alert alert-error" role="alert" hidden></div>
+        <section id="accessGate" class="access-gate" hidden aria-live="polite"><div class="gate-icon" aria-hidden="true">!</div><div><p class="eyebrow">ACCESS CONTROL</p><h2 id="gateTitle">需要管理员身份</h2><p id="gateMessage">控制中心只对项目所有者开放。</p></div><a class="button button-primary" href="/auth?return_to=%2Fcontrol">前往登录</a></section>
+
+        <div id="consoleContent">
+          <section id="overview" class="overview-section">
+            <div class="security-banner"><div class="security-icon" aria-hidden="true">✓</div><div><strong>本机管理模式</strong><span>当前绑定 127.0.0.1，公网访问关闭。公开部署前必须在反向代理阻断控制面路径。</span></div><span id="accessBadge" class="badge badge-neutral">正在验证</span></div>
+            <div class="identity-row"><div class="identity-card"><div class="avatar" aria-hidden="true">HC</div><div><p class="eyebrow">管理员身份</p><h2 id="identityName">验证中</h2><p id="identityMeta">正在确认当前会话和权限</p></div></div><div class="identity-scope"><span class="scope-label">权限范围</span><strong id="identityScope">local_control_plane</strong><span id="identityExpiry">会话状态读取中</span></div></div>
+            <div class="metric-grid" aria-label="系统指标"><article class="metric-card"><span class="metric-label">Core API</span><strong id="metricCore">--</strong><small id="metricCoreDetail">等待检查</small></article><article class="metric-card"><span class="metric-label">Web Auth</span><strong id="metricAuth">--</strong><small id="metricAuthDetail">等待检查</small></article><article class="metric-card"><span class="metric-label">Memory</span><strong id="metricMemory">--</strong><small id="metricMemoryDetail">等待检查</small></article><article class="metric-card"><span class="metric-label">Managed Services</span><strong id="metricServices">--</strong><small id="metricServicesDetail">等待检查</small></article></div>
+          </section>
+
+          <section id="runtime" class="content-section"><div class="section-heading"><div><p class="eyebrow">02 / RUNTIME</p><h2>核心运行时</h2><p>认知主体、模型调用、记忆和权限边界均由 HeadCore 统一编排。</p></div><span id="overviewState" class="state loading">读取中</span></div><div id="statusGrid" class="status-grid" aria-live="polite" aria-busy="true"><div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div></div></section>
+
+          <section id="clients" class="content-section"><div class="section-heading"><div><p class="eyebrow">03 / CLIENTS</p><h2>客户端与发布</h2><p>客户端只负责呈现和设备能力，身份、人格、记忆与安全决策留在服务端。</p></div></div><div class="client-grid"><article class="client-card client-live"><div class="card-topline"><span class="status-pill live">LIVE</span><span class="card-code">WEB-01</span></div><h3>官网</h3><p>公开展示项目能力边界，访客可以查看介绍并进入登录流程。</p><a href="/">打开官网 <span aria-hidden="true">↗</span></a></article><article class="client-card client-live"><div class="card-topline"><span class="status-pill live">LIVE</span><span class="card-code">WEB-02</span></div><h3>对话工作区</h3><p>游客可使用受限预览；登录用户才能保存历史、记忆和个人配置。</p><a href="/desk">打开 Desk <span aria-hidden="true">↗</span></a></article><article class="client-card client-live"><div class="card-topline"><span class="status-pill live">LIVE</span><span class="card-code">WEB-03</span></div><h3>账号与个人中心</h3><p>账户资料、密码、人格草稿和记忆档案属于当前账号，默认不可跨账号读取。</p><a href="/me">打开个人中心 <span aria-hidden="true">↗</span></a></article><article class="client-card client-locked"><div class="card-topline"><span class="status-pill locked">OWNER ONLY</span><span class="card-code">OPS-01</span></div><h3>控制中心</h3><p>仅项目所有者可访问。服务启停、配置修改和诊断操作都会经过审计。</p><span class="muted">当前页面</span></article></div></section>
+
+          <section id="capabilities" class="content-section"><div class="section-heading"><div><p class="eyebrow">04 / CAPABILITIES</p><h2>能力服务</h2><p>状态来自真实本地探针；未接通、未配置和已封存能力不会伪装成可用开关。</p></div></div><div id="capabilityList" class="capability-list" aria-busy="true"><div class="skeleton-card"></div><div class="skeleton-card"></div></div></section>
+
+          <section id="diagnostics" class="content-section"><div class="section-heading"><div><p class="eyebrow">05 / DIAGNOSTICS</p><h2>运行诊断</h2><p>聚合组件状态、测试报告和脱敏错误分类，耗时检查不会阻塞控制台首屏。</p></div><span id="operationsOverall" class="state loading">读取中</span></div><div id="operationsComponents" class="diagnostic-list"></div><div class="diagnostic-grid"><article class="diagnostic-panel"><div class="panel-title"><h3>测试报告</h3><span>最近 6 次</span></div><div id="operationsReports"></div></article><article class="diagnostic-panel"><div class="panel-title"><h3>错误分类</h3><span>已脱敏</span></div><div id="operationsErrors"></div></article></div></section>
+
+          <section id="guardrails" class="content-section guardrails-section"><div class="section-heading"><div><p class="eyebrow">06 / GUARDRAILS</p><h2>安全边界</h2><p>面向未来公开使用的权限分层，当前只启用本机控制面。</p></div></div><div class="guardrail-grid"><article><span class="role-tag visitor">游客</span><h3>浏览与预览</h3><p>可访问官网和受限对话预览；不保存长期记忆，不读取账号数据。</p></article><article><span class="role-tag member">登录用户</span><h3>个人工作区</h3><p>只能管理自己的对话、记忆、人格和账号安全设置。</p></article><article><span class="role-tag owner">项目所有者</span><h3>控制面</h3><p>可查看脱敏运行数据并执行受审计的服务操作，不能绕过 CSRF 和会话校验。</p></article></div><div class="danger-note"><span aria-hidden="true">!</span><p><strong>危险操作提示</strong> 配置写入、服务启停和测试执行会影响本机进程；控制中心不会停止自身，公开部署前必须增加 HTTPS、反向代理 ACL、速率限制和审计留存。</p></div></section>
         </div>
-      </section>
-
-      <section id="capabilities">
-        <div class="section-head"><div><p class="eyebrow">03 / CAPABILITIES</p><h2>能力服务</h2><p>只显示已实现的本地或 API 能力状态，不会在刷新时调用外部模型或世界接口。</p></div></div>
-        <div id="capabilityList" class="capability-list"></div>
-      </section>
-
-      <section id="diagnostics">
-        <div class="section-head"><div><p class="eyebrow">04 / DIAGNOSTICS</p><h2>运行诊断</h2><p>聚合只读组件状态、测试报告与脱敏错误分类。</p></div><span id="operationsOverall" class="state loading">读取中</span></div>
-        <div id="operationsComponents" class="diagnostic-list"></div>
-        <div class="diagnostic-grid"><article><h3>测试报告</h3><div id="operationsReports"></div></article><article><h3>错误分类</h3><div id="operationsErrors"></div></article></div>
-      </section>
-    </main>
-    <script src="/control/app.js?v=20260725-2"></script>
+      </main>
+    </div>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <script src="/control/app.js?v=20260829-1"></script>
   </body>
 </html>

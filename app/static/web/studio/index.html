@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0b0b0f" />
     <link rel="manifest" href="/desk/manifest.webmanifest" />
-    <link rel="icon" href="data:," />
+    <link rel="icon" href="/desk/icon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/ui/liquid-theme.css" />
     <link rel="stylesheet" href="/desk/style.css" />
     <title>人格引擎 | 即时沙盒</title>
@@ -19,6 +19,12 @@
         </a>
         <span class="header-location">即时沙盒</span>
         <div class="workspace-actions">
+          <button id="newSessionAction" class="new-session-action" type="button" aria-label="新建会话" title="新建会话">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          </button>
+          <button id="mobileContextAction" class="mobile-context-action" type="button" aria-label="查看当前人格" aria-controls="contextSidebar" aria-expanded="false" title="查看当前人格">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.25" /><path d="M5.5 20c.7-3.25 2.9-5 6.5-5s5.8 1.75 6.5 5" /></svg>
+          </button>
           <a id="accountAction" class="account-action" href="/me">进入工坊</a>
         </div>
       </header>
@@ -27,9 +33,13 @@
         <aside class="workspace-sidebar" aria-label="沙盒导航">
           <section class="sidebar-section">
             <p class="sidebar-label">会话</p>
+            <button id="newSessionSidebar" class="new-session-sidebar" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+              <span>新建会话</span>
+            </button>
             <div class="history-entry">
               <button class="history-item active" type="button" aria-current="page">
-                <span class="history-title">当前测试会话</span>
+                <span id="historyTitle" class="history-title">当前测试会话</span>
                 <time id="historyTimestamp" datetime="">刚刚</time>
               </button>
               <button id="historyMenuButton" class="history-menu-trigger" type="button" aria-label="会话更多操作" aria-haspopup="menu" aria-expanded="false" aria-controls="historyMenu" title="会话更多操作">⋮</button>
@@ -37,7 +47,6 @@
                 <button type="button" role="menuitem" data-history-action="copy-session">复制会话编号</button>
               </div>
             </div>
-            <div class="history-placeholder" aria-hidden="true"><i></i><i></i><i></i></div>
           </section>
         </aside>
 
@@ -49,6 +58,9 @@
             <span class="status-separator" aria-hidden="true">·</span>
             <span>消息不会写入长期记忆</span>
             <span id="footerCoreStatus" class="core-status">正在检查本机服务</span>
+            <span id="voiceStatus" class="voice-status" aria-live="polite">语音回复检测中</span>
+            <button id="voiceCheckAction" class="status-action" type="button" title="重新检查本地语音服务">检查语音</button>
+            <a id="voiceControlLink" class="status-link" href="/control" title="打开本地控制中心">控制中心</a>
           </aside>
 
           <div id="messages" class="messages" aria-live="polite" aria-label="对话消息">
@@ -64,11 +76,14 @@
             </section>
           </div>
 
+          <button id="scrollToLatest" class="scroll-to-latest" type="button" aria-label="回到最新消息" title="回到最新消息" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+          </button>
+
           <form id="chatForm" class="composer liquid-glass glass-card" novalidate data-composer-mode="text">
             <div class="composer-leading">
-              <button id="attachmentAction" class="composer-icon-action" type="button" aria-label="添加附件，本地沙盒不会上传" title="附件不会离开本地沙盒">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 1 1 5.7 5.7l-9.2 9.2a2 2 0 1 1-2.8-2.8l8.5-8.5" /></svg>
-              </button>
+              <!-- Kept as a hidden compatibility hook for older desk integrations; attachments are not enabled. -->
+              <button id="attachmentAction" type="button" hidden disabled aria-hidden="true"></button>
               <button id="voiceModeAction" class="composer-icon-action mode-action" type="button" data-composer-mode="voice" aria-label="切换到按住说话" aria-controls="textComposer voiceComposer" aria-pressed="false" title="切换到按住说话">
                 <svg class="voice-mode-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3" /></svg>
                 <svg class="text-mode-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M12 5v14M8 19h8" /></svg>
@@ -76,13 +91,21 @@
             </div>
             <div id="textComposer" class="text-composer">
               <label class="sr-only" for="chatInput">对话内容</label>
-              <input id="chatInput" type="text" maxlength="4000" enterkeyhint="send" autocomplete="off" placeholder="输入测试消息…" />
+              <textarea id="chatInput" rows="1" maxlength="4000" enterkeyhint="send" autocomplete="off" placeholder="输入测试消息…"></textarea>
               <span id="charCount" aria-live="polite">0/4000</span>
             </div>
             <div id="voiceComposer" class="voice-composer" hidden>
               <button id="holdToTalk" class="hold-to-talk" type="button"><span aria-hidden="true">●</span><span id="holdToTalkLabel">按住说话</span></button>
               <output id="voiceDuration" aria-live="polite">00:00</output>
             </div>
+            <section id="voiceReview" class="voice-review" hidden aria-labelledby="voiceReviewTitle">
+              <label id="voiceReviewTitle" for="voiceTranscript">识别结果</label>
+              <textarea id="voiceTranscript" maxlength="4000" rows="3"></textarea>
+              <div class="voice-review-actions">
+                <button id="voiceTranscriptCancel" type="button">重新录音</button>
+                <button id="voiceTranscriptSend" type="button">确认发送</button>
+              </div>
+            </section>
             <button id="sendButton" class="send-action" type="submit" aria-label="发送测试消息" title="发送" disabled>
               <span id="sendLabel" class="sr-only">发送</span>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6" /></svg>
@@ -126,6 +149,7 @@
           </div>
         </aside>
       </main>
+      <button id="contextBackdrop" class="context-backdrop" type="button" aria-label="关闭当前人格面板" hidden></button>
     </div>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
     <script src="/desk/app.js"></script>

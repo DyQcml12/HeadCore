@@ -10,15 +10,19 @@ from typing import Protocol
 from app.core.config import Settings
 from app.core.security import redact_secrets
 from app.head import (
+    append_conversation_world_event,
     HeadState,
     build_head_state,
     cognitive_facts_from_world_result,
+    derive_head_world_model,
     load_head_event_context,
+    merge_head_world_models,
     record_head_events,
     record_head_response_event,
     render_continuity_timeline,
     render_head_projection,
     save_cognitive_fact,
+    save_head_world_model,
 )
 from app.dialogue.expression_policy import sanitize_visible_reply
 from app.expression.core_api import STREAM_TRUNCATED_MARKER
@@ -45,7 +49,11 @@ from app.mind.self_state import build_self_state
 from app.mind.social_state import SocialState
 from app.mind.social_state import build_social_state
 from app.persona.memory_policy import build_memory_policy
-from app.persona.memory_service import apply_memory_policy, load_memory_context
+from app.persona.memory_service import (
+    READABLE_MEMORY_TYPES,
+    apply_memory_policy,
+    build_memory_context,
+)
 from app.persona.memory_service import extract_memory_terms
 from app.persona.persona_prompt_builder import build_persona_prompt
 from app.persona.platform_router import select_platform_persona
@@ -93,6 +101,7 @@ from app.services.response_evaluator import (
 from app.camera.attention import camera_clarification_instruction, select_camera_context
 from app.camera.evidence_store import CameraContextProvider
 from app.storage.chat_repository import ChatRepository
+from app.storage.chat_repository import MemoryRecord
 from app.storage.chat_repository import MessageRecord
 from app.storage.chat_repository import SessionRecord
 from app.storage.repository_factory import create_chat_repository
@@ -274,6 +283,12 @@ class ChatService:
 
             self.world_context_provider = WorldBrainCoordinator(build_world_runtime(settings))
 
+    async def _load_self_profile(self, *, user_id: str) -> SelfProfile | None:
+        try:
+            return await load_self_profile(self.repository, user_id=user_id)
+        except Exception:
+            return None
+
     async def reply(
         self,
         user_input: str,
@@ -310,6 +325,9 @@ class ChatService:
             sandbox_persona_id=sandbox_persona_id,
             head_runtime_origin=head_runtime_origin,
         )
+        timing_metadata = {
+            "prepare_latency_ms": str(round((time.perf_counter() - prepared.started_at) * 1000, 2))
+        }
         if prepared.relationship_context.role == "blocked":
             return ChatResponse(
                 text="这边暂时不接待。",
@@ -340,20 +358,26 @@ class ChatService:
                 allow_head_event_write=prepared.allow_head_event_write,
                 request_metadata_json={
                     "world_guard": "true",
+                    **timing_metadata,
                     **build_request_metadata(prepared),
                 },
             )
             return response
+        provider_started_at: float | None = None
         try:
             system_prompt = prepared.system_prompt
             if self.world_context_provider is not None:
                 system_prompt = system_prompt + "\n" + render_tool_protocol_instruction()
+            provider_started_at = time.perf_counter()
             decision = await self.provider_router.route(
                 ProviderCapability.TEXT,
                 self._text_routing_policy(),
                 lambda provider: provider.generate_text(
                     TextRequest(system_prompt, prepared.user_prompt)
                 ),
+            )
+            timing_metadata["model_latency_ms"] = str(
+                round((time.perf_counter() - provider_started_at) * 1000, 2)
             )
             text = sanitize_visible_reply(decision.value)
             live_repair_attempted = False
@@ -424,6 +448,7 @@ class ChatService:
                             "live_repair_attempted": str(live_repair_attempted).lower(),
                             "world_tool_iteration": str(world_tool_iteration),
                             "world_tool_status": world_tool_status,
+                            **timing_metadata,
                             **provider_trace_metadata(decision.trace),
                             **build_request_metadata(prepared, include_api_path=False),
                         },
@@ -452,6 +477,7 @@ class ChatService:
                     "live_repair_attempted": str(live_repair_attempted).lower(),
                     "world_tool_iteration": str(world_tool_iteration),
                     "world_tool_status": world_tool_status,
+                    **timing_metadata,
                     **provider_trace_metadata(decision.trace),
                     **(
                         provider_trace_metadata(repair_decision.trace, prefix="repair_")
@@ -470,6 +496,10 @@ class ChatService:
                 error=str(error),
                 persona_profile=prepared.persona_profile_id,
             )
+            if provider_started_at is not None:
+                timing_metadata["model_latency_ms"] = str(
+                    round((time.perf_counter() - provider_started_at) * 1000, 2)
+                )
             trace_metadata = provider_trace_metadata(exc.trace) if isinstance(exc, RoutingFailed) else {}
             await self._write_records(
                 started_at=prepared.started_at,
@@ -481,7 +511,11 @@ class ChatService:
                 persona_profile=prepared.persona_profile_id,
                 head_state=prepared.head_state,
                 allow_head_event_write=prepared.allow_head_event_write,
-                request_metadata_json={**trace_metadata, **build_request_metadata(prepared)},
+                request_metadata_json={
+                    **timing_metadata,
+                    **trace_metadata,
+                    **build_request_metadata(prepared),
+                },
             )
             return response
 
@@ -535,6 +569,9 @@ class ChatService:
             sandbox_persona_id=sandbox_persona_id,
             head_runtime_origin=head_runtime_origin,
         )
+        timing_metadata = {
+            "prepare_latency_ms": str(round((time.perf_counter() - prepared.started_at) * 1000, 2))
+        }
         if prepared.relationship_context.role == "blocked":
             yield "这边暂时不接待。"
             return
@@ -562,6 +599,7 @@ class ChatService:
                     "api_path": "/chat/completions",
                     "stream": "true",
                     "world_guard": "true",
+                    **timing_metadata,
                     **build_request_metadata(prepared, include_api_path=False),
                 },
                 replace_failed_response=False,
@@ -587,6 +625,7 @@ class ChatService:
         stream_truncated = False
         stream_correction_appended = False
         deadline = time.monotonic() + self.settings.text_stream_total_budget_seconds
+        provider_started_at = time.perf_counter()
         iterator = route.__aiter__()
         try:
             try:
@@ -601,6 +640,9 @@ class ChatService:
                 ) from exc
             if first_chunk is None:
                 raise RuntimeError("Stream response content is empty.")
+            timing_metadata["ttft_ms"] = str(
+                round((time.perf_counter() - provider_started_at) * 1000, 2)
+            )
             chunks.append(first_chunk)
             if not buffer_for_world_grounding:
                 yield first_chunk
@@ -742,6 +784,10 @@ class ChatService:
                     "stream_repair_attempted": str(stream_repair_attempted).lower(),
                     "stream_truncated": str(stream_truncated).lower(),
                     "stream_correction_appended": str(stream_correction_appended).lower(),
+                    "model_latency_ms": str(
+                        round((time.perf_counter() - provider_started_at) * 1000, 2)
+                    ),
+                    **timing_metadata,
                     **provider_trace_metadata(route.trace),
                     **(
                         provider_trace_metadata(repair_decision.trace, prefix="repair_")
@@ -776,17 +822,26 @@ class ChatService:
         started_at = time.perf_counter()
         classification = classify_scene(user_input)
         memory_policy = build_memory_policy(classification)
-        relationship_context = await resolve_relationship_context(
-            self.repository,
-            self.settings,
-            platform=platform,
-            platform_user_id=platform_user_id,
-            platform_group_id=platform_group_id,
+        relationship_context, session = await asyncio.gather(
+            resolve_relationship_context(
+                self.repository,
+                self.settings,
+                platform=platform,
+                platform_user_id=platform_user_id,
+                platform_group_id=platform_group_id,
+            ),
+            self.repository.ensure_session(user_id=user_id, client_session_id=session_id),
         )
-        session = await self.repository.ensure_session(user_id=user_id, client_session_id=session_id)
-        recent_messages = await self.repository.list_recent_messages(
-            session_id=session.id,
-            limit=self.settings.recent_context_max_messages,
+        recent_messages, head_event_context, self_profile = await asyncio.gather(
+            self.repository.list_recent_messages(
+                session_id=session.id,
+                limit=self.settings.recent_context_max_messages,
+            ),
+            load_head_event_context(
+                self.repository,
+                user_id=user_id,
+            ),
+            self._load_self_profile(user_id=user_id),
         )
         repetition_signal = build_repetition_signal(
             user_input=user_input,
@@ -803,14 +858,6 @@ class ChatService:
             recent_messages=recent_messages,
             user_input=user_input,
         )
-        head_event_context = await load_head_event_context(
-            self.repository,
-            user_id=user_id,
-        )
-        try:
-            self_profile = await load_self_profile(self.repository, user_id=user_id)
-        except Exception:
-            self_profile = None
         head_state = build_head_state(
             subject_id=user_id,
             user_input=user_input,
@@ -850,20 +897,15 @@ class ChatService:
                 classification=classification,
                 policy=memory_policy,
             )
-        memory_records = (
-            await self.repository.list_memories(user_id=user_id, limit=8)
-            if relationship_context.allow_long_term_profile
-            else []
-        )
-        memory_context = (
-            await load_memory_context(
-                self.repository,
+        memory_records: list[MemoryRecord] = []
+        memory_context = ""
+        if relationship_context.allow_long_term_profile:
+            memory_records = await self.repository.list_memories(
                 user_id=user_id,
-                policy=memory_policy,
+                memory_types=READABLE_MEMORY_TYPES,
+                limit=8,
             )
-            if relationship_context.allow_long_term_profile
-            else ""
-        )
+            memory_context = build_memory_context(memory_records, policy=memory_policy)
         managed_persona: PersonaRuntimeProjection | None = None
         persona_management_projection_status = "not_configured"
         platform_persona = select_platform_persona(self.settings, platform)
@@ -1002,8 +1044,14 @@ class ChatService:
             head_event_context.cognitive_facts,
             persistable_world_results,
         )
+        allow_world_model_write = bool(
+            self.world_context_provider is not None
+            and (allow_head_event_write or platform is None or platform.strip().lower() == "web")
+            and (input_source != "audio" or input_quality_passed)
+        )
         head_world_state = build_head_world_state(world_context)
         world_uncertainties = world_state_uncertainties(head_world_state)
+        current_event_context = head_event_context
         if current_world_facts or world_uncertainties:
             current_event_context = replace(
                 head_event_context,
@@ -1015,6 +1063,35 @@ class ChatService:
                     else head_event_context.cognitive_facts
                 ),
             )
+            if current_world_facts:
+                try:
+                    current_event_context = replace(
+                        current_event_context,
+                        world_model=merge_head_world_models(
+                            head_event_context.world_model,
+                            derive_head_world_model(current_event_context.cognitive_facts),
+                        ),
+                    )
+                except Exception:
+                    # Graph derivation is best-effort and never blocks a reply.
+                    pass
+        if allow_world_model_write:
+            try:
+                current_event_context = replace(
+                    current_event_context,
+                    world_model=append_conversation_world_event(
+                        current_event_context.world_model,
+                        user_id=user_id,
+                        session_id=session.id,
+                        source_message_id=user_message.id,
+                        summary=user_input,
+                        occurred_at=user_message.created_at,
+                    ),
+                )
+            except Exception:
+                # Conversation telemetry must never block the chat response.
+                pass
+        if current_world_facts or allow_world_model_write:
             head_state = build_head_state(
                 subject_id=user_id,
                 user_input=user_input,
@@ -1033,8 +1110,32 @@ class ChatService:
                 session_id=session.id,
                 source_message_id=user_message.id,
                 facts=current_world_facts,
-                allow_write=allow_head_event_write,
+                allow_write=allow_world_model_write,
             )
+            try:
+                await save_head_world_model(
+                    self.repository,
+                    user_id=user_id,
+                    session_id=session.id,
+                    source_message_id=user_message.id,
+                    model=current_event_context.world_model,
+                    allow_write=allow_world_model_write,
+                )
+            except Exception:
+                # Persisting the graph is best-effort and never blocks a reply.
+                pass
+        elif allow_world_model_write:
+            try:
+                await save_head_world_model(
+                    self.repository,
+                    user_id=user_id,
+                    session_id=session.id,
+                    source_message_id=user_message.id,
+                    model=current_event_context.world_model,
+                    allow_write=True,
+                )
+            except Exception:
+                pass
         system_prompt = system_prompt + "\n" + render_head_projection(head_state)
         system_prompt = system_prompt + "\n" + render_continuity_timeline(
             head_state,
@@ -1136,6 +1237,8 @@ class ChatService:
         world_facts: tuple[tuple[str, str], ...] = (),
     ) -> None:
         latency_ms = (time.perf_counter() - started_at) * 1000
+        request_metadata = dict(request_metadata_json or {})
+        request_metadata.setdefault("total_latency_ms", str(round(latency_ms, 2)))
         evaluation = self.evaluator.evaluate(
             user_input=user_input,
             response_text=response.text,
@@ -1164,7 +1267,11 @@ class ChatService:
             prompt_hash=prompt_hash,
             response_hash=response_hash,
             error=response.error,
-            request_metadata_json=request_metadata_json or {"api_path": "/api/v1/chat"},
+            request_metadata_json=(
+                request_metadata
+                if request_metadata
+                else {"api_path": "/api/v1/chat", "total_latency_ms": str(round(latency_ms, 2))}
+            ),
         )
         assistant_message = await self.repository.save_message(
             session_id=session_id,
@@ -1370,16 +1477,17 @@ class ChatService:
         length_instruction = (
             f"本轮轮次约束：{turn_signal.instruction} 最多 {turn_signal.max_chars} 个中文字符。"
             if turn_signal.should_minimize_reply
-            else "本轮按正常聊天节奏，默认一到两句。"
+            else "本轮按内容自然决定长度；闲聊默认一到两句，任务回答以完整有用为先，不要硬截断。"
         )
         repair_system_prompt = "\n".join(
             [
                 system_prompt,
-                "上一条回复没有通过本地人格门禁。请重新输出一条更短、更自然的私聊回复。",
+                "上一条回复没有通过本地人格门禁。请重新输出一条符合场景、自然的私聊回复；"
+                "只有用户明确要求少说、暂停或只给低信息短句时才收紧长度。",
                 "必须只输出新版回复；不要解释规则；不要写多段；不要使用兜底模板。",
                 reason_specific_instruction,
                 length_instruction,
-                "debug 已有报错时，只说一个可能原因和一个检查点，45 字以内。",
+                "debug 已有报错时，只说一个可能原因和一个检查点；用户明确要求完整分析时可以展开。",
             ]
         )
         repair_user_prompt = "\n".join(

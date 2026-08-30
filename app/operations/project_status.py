@@ -9,6 +9,7 @@ from app.operations.probes import StaticStatusProvider
 from app.operations.providers import StatusProvider
 from app.audio.funasr_engine import MODEL_PRESETS
 from app.audio.model_paths import resolve_modelscope_model
+from app.camera.local_runtime import inspect_local_vision_capabilities
 from app.providers import ProviderHealth
 from app.providers.runtime import ProviderRuntimeMonitor, provider_runtime_monitor
 from app.knowledge.mysql_repository import MySQLKnowledgeRepository
@@ -31,7 +32,12 @@ class DatabaseControlStatusProvider:
         else:
             state = ComponentState.DEGRADED
             missing_count = sum(1 for present in status.required_tables.values() if not present)
-            detail = f"readiness failed; missing tables: {missing_count}"
+            reasons: list[str] = []
+            if missing_count:
+                reasons.append(f"missing tables: {missing_count}")
+            if not status.admin_exists:
+                reasons.append("administrator bootstrap missing")
+            detail = "readiness failed; " + ("; ".join(reasons) or "schema metadata incomplete")
         return ComponentStatus(
             component_id=self.component_id,
             label="Database V2",
@@ -101,6 +107,54 @@ class KnowledgeLifecycleStatusProvider:
                 if status.durable
                 else status.reason
             ),
+        )
+
+
+class LocalVisionStatusProvider:
+    """Archived provider retained for offline migration checks only.
+
+    It is intentionally not returned by ``build_project_status_providers``.
+    """
+
+    component_id = "camera_vision"
+
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+
+    async def get_status(self) -> ComponentStatus:
+        if not (
+            self._settings.camera_perception_enabled
+            and self._settings.camera_local_capture_enabled
+        ):
+            return ComponentStatus(
+                component_id=self.component_id,
+                label="Local vision",
+                category="vision",
+                state=ComponentState.NOT_CONFIGURED,
+                detail="camera perception or local capture is disabled",
+            )
+
+        capability = inspect_local_vision_capabilities(
+            yolo_model_path=self._settings.camera_yolo_model_path,
+            enable_mediapipe=self._settings.camera_mediapipe_enabled,
+        )
+        if not capability.capture_ready:
+            state = ComponentState.DEGRADED
+            detail = "capture unavailable"
+        elif not capability.labeling_ready:
+            state = ComponentState.DEGRADED
+            detail = "capture ready; labeling unavailable"
+        else:
+            state = ComponentState.ONLINE
+            detail = "local capture and labeling are ready"
+        if capability.reason_codes:
+            detail += "; reasons=" + ",".join(capability.reason_codes)
+        return ComponentStatus(
+            component_id=self.component_id,
+            label="Local vision",
+            category="vision",
+            state=state,
+            detail=detail,
         )
 
 

@@ -343,7 +343,7 @@ def test_brain_coordinator_calls_tools_only_for_explicit_ready_requests() -> Non
     asyncio.run(scenario())
 
 
-def test_brain_coordinator_exposes_only_ready_current_weather_as_persistable_evidence() -> None:
+def test_brain_coordinator_exposes_ready_weather_as_persistable_evidence() -> None:
     async def scenario() -> None:
         coordinator = WorldBrainCoordinator(FakeRuntime())
 
@@ -353,7 +353,7 @@ def test_brain_coordinator_exposes_only_ready_current_weather_as_persistable_evi
 
         assert current.projection.status == "ready"
         assert len(current.persistable_results) == 1
-        assert forecast.persistable_results == ()
+        assert len(forecast.persistable_results) == 1
         assert missing.persistable_results == ()
 
     asyncio.run(scenario())

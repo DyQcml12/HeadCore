@@ -25,7 +25,15 @@ def test_camera_control_router_is_admin_gated_and_disabled_by_default(monkeypatc
     monkeypatch.setattr("app.control.routes.require_control_admin", authorize)
     monkeypatch.setattr("app.control.routes.audit_control_result", audit)
     app = FastAPI()
-    app.include_router(create_camera_control_router(load_settings()))
+    app.include_router(
+        create_camera_control_router(
+            replace(
+                load_settings(),
+                camera_perception_enabled=False,
+                camera_local_capture_enabled=False,
+            )
+        )
+    )
 
     async def request() -> httpx.Response:
         async with httpx.AsyncClient(

@@ -86,9 +86,7 @@ def test_bot_specific_control_apis_are_not_published() -> None:
         assert response.status_code == 404
 
 
-def test_control_world_model_document_is_published() -> None:
+def test_control_world_model_document_is_not_published() -> None:
     response = asyncio.run(request_app("GET", "/control/docs/world-model"))
 
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("text/markdown")
-    assert "没有已训练、可自主模拟现实的通用世界模型" in response.text
+    assert response.status_code == 404

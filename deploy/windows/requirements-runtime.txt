@@ -1,0 +1,10 @@
+fastapi==0.124.2
+httpx==0.28.1
+uvicorn==0.38.0
+websockets==16.0
+asyncmy==0.2.10
+psycopg[binary]==3.3.4
+argon2-cffi==25.1.0
+python-multipart==0.0.32
+pywebview>=5.0
+pythonnet>=3.0.3

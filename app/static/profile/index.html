@@ -29,24 +29,31 @@
     <header class="workshop-intro">
       <p>PERSONA WORKSHOP</p>
       <h1>人格工坊</h1>
-      <span id="workshopAccountState">从浏览器草稿开始，测试满意后再考虑云端同步。</span>
+      <span id="workshopAccountState">从本机草稿开始，测试满意后再考虑云端同步。</span>
     </header>
 
     <aside class="resource-sidebar liquid-glass" aria-label="个人中心导航">
       <section class="sidebar-profile" aria-label="当前账户">
         <label class="sidebar-avatar" for="agentAvatarInput" title="选择本地头像" aria-label="选择本地头像"><input id="agentAvatarInput" type="file" accept="image/png,image/jpeg,image/webp" hidden><img id="sidebarAvatarPreview" alt="" hidden><span id="sidebarAvatarFallback" aria-hidden="true">P</span></label>
-        <div class="sidebar-profile-copy"><strong id="sidebarUsername">本地创作者</strong><small id="sidebarAccountState">浏览器工作区</small></div>
+        <div class="sidebar-profile-copy"><strong id="sidebarUsername">本地创作者</strong><small id="sidebarAccountState">本机工作区</small></div>
       </section>
       <nav class="workshop-tabs" role="tablist" aria-label="个人中心分区">
         <button type="button" role="tab" data-rail-item="user" data-workshop-view="profile" aria-controls="profile" aria-selected="false" aria-label="User · 个人资料" aria-describedby="profileTabTooltip">
+          <span class="nav-label">个人资料</span>
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.25"></circle><path d="M5.5 20c.7-3.25 2.9-5 6.5-5s5.8 1.75 6.5 5"></path></svg>
           <span id="profileTabTooltip" class="nav-tooltip" role="tooltip">User · 个人资料</span>
         </button>
         <button type="button" role="tab" data-rail-item="settings" data-workshop-view="security" aria-controls="security" aria-selected="false" aria-label="Settings · 设置与安全" aria-describedby="securityTabTooltip">
+          <span class="nav-label">安全与密码</span>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 14 5l2.5-.1.8 2.4 2 1.5-.9 2.4.9 2.4-2 1.5-.8 2.4-2.5-.1-2 1.5-2-1.5-2.5.1-.8-2.4-2-1.5.9-2.4-.9-2.4 2-1.5.8-2.4 2.5.1L12 3.5Z"></path><circle cx="12" cy="11.2" r="2.2"></circle></svg>
           <span id="securityTabTooltip" class="nav-tooltip" role="tooltip">Settings · 设置与安全</span>
         </button>
-        <button class="active" type="button" role="tab" data-rail-item="agent" data-workshop-view="configuration" aria-controls="configuration" aria-selected="true" aria-label="Agent · Agent 配置" aria-describedby="agentTabTooltip">
+        <button type="button" role="tab" data-rail-item="persona" data-workshop-view="persona" aria-controls="persona" aria-selected="false" aria-label="Persona · 人格草稿"><span class="nav-glyph" aria-hidden="true">P</span><span class="nav-label">人格草稿</span></button>
+        <button type="button" role="tab" data-rail-item="models" data-workshop-view="models" aria-controls="models" aria-selected="false" aria-label="Models · 模型与语音"><span class="nav-glyph" aria-hidden="true">M</span><span class="nav-label">模型与语音</span></button>
+        <button type="button" role="tab" data-rail-item="memory" data-workshop-view="memory" aria-controls="memory" aria-selected="false" aria-label="Memory · 记忆档案"><span class="nav-glyph" aria-hidden="true">R</span><span class="nav-label">记忆档案</span></button>
+        <button type="button" role="tab" data-rail-item="notifications" data-workshop-view="notifications" aria-controls="notifications" aria-selected="false" aria-label="Notifications · 通知偏好"><span class="nav-glyph" aria-hidden="true">N</span><span class="nav-label">通知偏好</span></button>
+        <button type="button" role="tab" data-rail-item="agent" data-workshop-view="configuration" aria-controls="configuration" aria-selected="false" aria-label="Agent · Agent 配置" aria-describedby="agentTabTooltip">
+          <span class="nav-label">自定义与工具</span>
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="M8 9h.01M12 9h.01M16 9h.01M8 13h8M8 16h5"></path></svg>
           <span id="agentTabTooltip" class="nav-tooltip" role="tooltip">Agent · Agent 配置</span>
         </button>
@@ -64,12 +71,12 @@
     <section id="workshopContent" class="workshop-content" aria-live="polite">
       <nav class="workshop-resource-tabs resource-jump-nav" role="tablist" aria-label="工坊资源">
         <span class="resource-nav-label">WORKSPACE</span>
-        <button type="button" role="tab" data-workshop-view="persona" aria-controls="persona" aria-selected="false">人格草稿</button>
+        <button class="active" type="button" role="tab" data-workshop-view="persona" aria-controls="persona" aria-selected="true">人格草稿</button>
         <button type="button" role="tab" data-workshop-view="models" aria-controls="models" aria-selected="false">模型仓库</button>
         <button type="button" role="tab" data-workshop-view="memory" aria-controls="memory" aria-selected="false">记忆档案</button>
         <button type="button" role="tab" data-workshop-view="notifications" aria-controls="notifications" aria-selected="false">通知偏好</button>
       </nav>
-      <section id="configuration" class="workshop-view active" data-view="configuration" role="tabpanel" aria-labelledby="configurationTitle">
+      <section id="configuration" class="workshop-view" data-view="configuration" role="tabpanel" hidden aria-labelledby="configurationTitle">
         <header class="view-heading"><p>AGENT CONFIGURATION</p><h2 id="configurationTitle">调整代理的表达方式与本地工具偏好。</h2><span>此处是浏览器配置草稿，不会覆盖 HeadCore、安全边界、真实模型参数或服务器工具权限。</span></header>
         <form id="agentConfigForm" class="agent-config-form" novalidate>
           <section class="config-section liquid-glass" aria-labelledby="identityConfigTitle"><header><div><p>01 / Identity</p><h3 id="identityConfigTitle">代理身份</h3></div></header><div class="agent-identity-grid"><label class="agent-avatar-upload" for="agentAvatarInput"><img id="configAvatarPreview" alt="代理头像预览" hidden><span id="configAvatarFallback" aria-hidden="true">P</span><small>选择头像</small></label><label for="agentName">代理名称<input id="agentName" name="agent_name" type="text" maxlength="60" autocomplete="off" data-agent-config placeholder="例如：人格引擎"></label></div></section>
@@ -78,14 +85,14 @@
             <summary id="parameterConfigTitle" aria-controls="advancedParameterPanel"><span><small>03 / PARAMETERS</small><strong>Advanced Parameters (3)</strong></span><svg class="accordion-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9 5 5 5-5"></path></svg></summary>
             <div id="advancedParameterPanel" class="accordion-panel"><div class="parameter-grid"><label for="temperature"><span>Temperature <output id="temperatureValue" for="temperature">0.7</output></span><input id="temperature" name="temperature" type="range" min="0" max="2" step="0.1" value="0.7" data-agent-config></label><label for="topP"><span>Top-P <output id="topPValue" for="topP">0.9</output></span><input id="topP" name="top_p" type="range" min="0" max="1" step="0.05" value="0.9" data-agent-config></label><label for="maxTokens"><span>Max Tokens</span><select id="maxTokens" name="max_tokens" data-agent-config><option value="512">512</option><option value="1024" selected>1024</option><option value="4096">4096</option></select></label></div></div>
           </details>
-          <section class="config-section liquid-glass" aria-labelledby="toolsConfigTitle"><header><div><p>04 / Tools</p><h3 id="toolsConfigTitle">工具偏好</h3></div></header><div class="tool-switches"><label for="toolWebSearch"><span><strong>Web Search</strong><small>需要服务器另行授权后才可调用</small></span><input id="toolWebSearch" name="web_search" type="checkbox" role="switch" data-agent-config></label><label for="toolCodeInterpreter"><span><strong>Code Interpreter</strong><small>当前页面不会执行代码</small></span><input id="toolCodeInterpreter" name="code_interpreter" type="checkbox" role="switch" data-agent-config></label><label for="toolImageGen"><span><strong>DALL-E Image Gen</strong><small>当前页面不会发送图像生成请求</small></span><input id="toolImageGen" name="image_generation" type="checkbox" role="switch" data-agent-config></label></div></section>
+          <section class="config-section liquid-glass" aria-labelledby="toolsConfigTitle"><header><div><p>04 / Tools</p><h3 id="toolsConfigTitle">工具能力</h3></div><span>只显示当前服务真实接通的能力</span></header><div class="tool-switches"><label for="toolWebSearch"><span><strong>Web Search</strong><small id="toolWebSearchHint">读取能力状态中…</small></span><span id="toolWebSearchState" class="capability-badge">检查中</span><input id="toolWebSearch" name="web_search" type="checkbox" role="switch" data-agent-config disabled></label><label for="toolCodeInterpreter"><span><strong>Code Interpreter</strong><small id="toolCodeInterpreterHint">读取能力状态中…</small></span><span id="toolCodeInterpreterState" class="capability-badge">检查中</span><input id="toolCodeInterpreter" name="code_interpreter" type="checkbox" role="switch" data-agent-config disabled></label><p class="capability-note">天气、新闻和政策查询属于服务端只读世界工具，不等同于通用网页搜索。</p></div></section>
         </form>
       </section>
-      <section id="profile" class="workshop-view" data-view="profile" role="tabpanel" hidden aria-labelledby="profileTitle"><header class="view-heading"><p>PROFILE</p><h2 id="profileTitle">个人资料</h2><span>登录后显示账户资料；本地模式不会创建云端身份。</span></header><article class="settings-state liquid-glass"><strong id="profileDisplayName">本地创作者</strong><span id="profileEmail">尚未登录</span><button id="profileAuthAction" type="button">登录或创建账户</button></article></section>
-      <section id="security" class="workshop-view" data-view="security" role="tabpanel" hidden aria-labelledby="securityTitle"><header class="view-heading"><p>SECURITY</p><h2 id="securityTitle">安全与会话</h2><span>认证由服务端 HttpOnly 会话和 CSRF 校验保护；此页面不会显示或保存密码。</span></header><article class="settings-state liquid-glass"><strong>会话保护</strong><span id="securitySessionState">登录后可查看当前会话状态。</span><a href="/auth?mode=resetRequest">重置密码</a></article></section>
+      <section id="profile" class="workshop-view" data-view="profile" role="tabpanel" hidden aria-labelledby="profileTitle"><header class="view-heading"><p>PROFILE</p><h2 id="profileTitle">个人资料</h2><span>登录后显示账户资料；本地模式不会创建云端身份。</span></header><article class="settings-state account-summary liquid-glass"><div class="account-summary-main"><span class="account-summary-avatar" aria-hidden="true">P</span><div><strong id="profileDisplayName">本地创作者</strong><span id="profileEmail">尚未登录</span></div></div><dl class="account-meta"><div><dt>账户创建</dt><dd id="profileCreatedAt">登录后显示</dd></div><div><dt>会话有效期</dt><dd id="profileSessionExpiry">登录后显示</dd></div></dl><button id="profileAuthAction" type="button">登录或创建账户</button></article></section>
+      <section id="security" class="workshop-view" data-view="security" role="tabpanel" hidden aria-labelledby="securityTitle"><header class="view-heading"><p>SECURITY</p><h2 id="securityTitle">安全与会话</h2><span>认证由服务端 HttpOnly 会话和 CSRF 校验保护；此页面不会显示或保存密码。</span></header><article class="settings-state security-summary liquid-glass"><div><strong>会话保护</strong><span id="securitySessionState">登录后可查看当前会话状态。</span></div><a class="security-action" href="/auth?mode=resetRequest">通过邮件修改密码</a><p>修改密码会让已有登录会话失效，需要重新登录。</p></article></section>
       <section id="billing" class="workshop-view" data-view="billing" role="tabpanel" hidden aria-labelledby="billingTitle"><header class="view-heading"><p>BILLING</p><h2 id="billingTitle">账单</h2><span>当前仓库未接入支付或订阅服务，不会收集付款信息。</span></header><article class="settings-state liquid-glass"><strong>本地开发模式</strong><span>无订阅、无账单记录、无自动扣费。</span><button type="button" disabled>账单服务未启用</button></article></section>
       <section id="notifications" class="workshop-view" data-view="notifications" role="tabpanel" hidden aria-labelledby="notificationsTitle"><header class="view-heading"><p>NOTIFICATIONS</p><h2 id="notificationsTitle">通知偏好</h2><span>通知偏好只保存在当前浏览器，不会订阅邮件或推送服务。</span></header><article class="settings-state liquid-glass"><label class="notification-setting" for="localSaveNotices"><span><strong>本地保存提醒</strong><small>自动保存 Agent 配置后显示提示</small></span><input id="localSaveNotices" type="checkbox" role="switch" checked></label></article></section>
-      <section id="persona" class="workshop-view" data-view="persona" role="tabpanel" hidden aria-labelledby="personaTitle">
+      <section id="persona" class="workshop-view active" data-view="persona" role="tabpanel" aria-labelledby="personaTitle">
         <header class="view-heading">
           <p>三步工作流</p>
           <h2 id="personaTitle">先写下人格，再带着草稿进入沙盒。</h2>
@@ -101,11 +108,11 @@
                 <label for="personaName">名字<input id="personaName" name="name" maxlength="60" placeholder="例如：星野" required></label>
                 <label for="personaTraits">基础性格（3 个词）<input id="personaTraits" name="traits" maxlength="80" placeholder="幽默、犀利、温柔"></label>
                 <details><summary>展开详细解释</summary><label for="personaDetail" class="detail-label">背景、表达方式、世界观或边界<textarea id="personaDetail" name="detail" rows="7" placeholder="描述这个人格如何理解用户、如何表达、哪些事情不应越界。"></textarea></label></details>
-                <div class="form-actions"><button class="save-draft" type="submit">保存草稿到浏览器</button><button id="clearDraft" class="clear-draft" type="button">清空草稿</button></div>
+                <div class="form-actions"><button class="save-draft" type="submit">保存草稿到本机服务</button><button id="clearDraft" class="clear-draft" type="button">清空编辑区</button></div>
               </form>
-              <aside class="draft-library" aria-label="已保存草稿"><div><p>本地人格列表</p><small>只存在此浏览器</small></div><div id="personaList" class="persona-list"></div></aside>
+              <aside class="draft-library" aria-label="已保存草稿"><div><p>本地人格列表</p><small>只存在本机服务</small></div><div id="personaList" class="persona-list"></div></aside>
             </div>
-            <p class="workflow-note"><span class="local-dot" aria-hidden="true"></span>保存后仅写入当前浏览器，不会上传或改变模型。</p>
+            <p class="workflow-note"><span class="local-dot" aria-hidden="true"></span>保存后仅写入本机服务，不会上传或改变模型。</p>
           </article>
 
           <article class="workflow-card sandbox-card liquid-glass">
@@ -120,7 +127,7 @@
 
           <article class="workflow-card cloud-card liquid-glass" data-cloud-state="locked">
             <header class="workflow-card-heading"><span>03</span><div><p>云端发布</p><h3>跨设备保存</h3></div><small id="cloudStatus">登录后解锁云端同步</small></header>
-            <div class="cloud-content"><span class="cloud-lock" aria-hidden="true">锁定</span><p id="cloudDescription">登录后可查看云端状态。浏览器草稿不会自动发布到服务器。</p><button id="cloudAuthAction" type="button">登录以查看云端状态</button></div>
+            <div class="cloud-content"><span class="cloud-lock" aria-hidden="true">锁定</span><p id="cloudDescription">登录后可查看云端状态。本机草稿不会自动发布到服务器。</p><button id="cloudAuthAction" type="button">登录以查看云端状态</button></div>
           </article>
         </div>
       </section>
@@ -133,11 +140,11 @@
       <section id="memory" class="workshop-view" data-view="memory" hidden aria-labelledby="memoryTitle">
         <header class="view-heading"><p>记忆档案</p><h2 id="memoryTitle">长期记忆只属于已登录账户。</h2><span>人格草稿与沙盒消息不会混入这里；只有真实账户记忆可被读取或删除。</span></header>
         <div id="memoryGate" class="memory-gate liquid-glass"><p>登录后可查看当前账户的长期记忆。</p><button id="memoryAuthAction" type="button">登录</button></div>
-        <div id="memoryArchive" hidden><div class="memory-toolbar"><span id="memoryStatus">当前账户记忆</span><button id="refreshMemories" type="button">刷新</button></div><div id="memoryList" class="memory-list"></div></div>
+        <div id="memoryArchive" hidden><div class="memory-toolbar"><div><strong id="memoryStatus">当前账户记忆</strong><small id="memoryCountLabel">0 条记录</small></div><label class="memory-search" for="memorySearch"><span class="sr-only">搜索记忆</span><input id="memorySearch" type="search" placeholder="搜索内容…" autocomplete="off"></label><select id="memoryFilter" aria-label="记忆类型"><option value="all">全部类型</option></select><button id="refreshMemories" type="button">刷新</button></div><div id="memoryList" class="memory-list"></div></div>
       </section>
     </section>
   </main>
-  <footer class="layout-statusbar" aria-label="工坊状态"><span>本地草稿仅在此浏览器</span><i aria-hidden="true"></i><span>沙盒不写入长期记忆</span><i aria-hidden="true"></i><span id="footerCloudState">云端同步需登录</span></footer>
+  <footer class="layout-statusbar" aria-label="工坊状态"><span>本机人格草稿仅在本机服务</span><i aria-hidden="true"></i><span>沙盒不写入长期记忆</span><i aria-hidden="true"></i><span id="footerCloudState">云端同步需登录</span></footer>
 
   <dialog id="deleteDialog" class="confirm-dialog"><form method="dialog"><h2>删除这条记忆？</h2><p>这会请求删除当前账户中的一条长期记忆，本地人格草稿不受影响。</p><div><button value="cancel" type="submit">取消</button><button value="confirm" class="danger-button" type="submit">删除</button></div></form></dialog>
   <dialog id="authDialog" class="auth-dialog" aria-labelledby="authDialogTitle"><header><div><p>PERSONACORE</p><h2 id="authDialogTitle">登录账户</h2></div><form method="dialog"><button type="submit" value="close" aria-label="关闭">×</button></form></header><iframe id="authFrame" title="账户认证" src="/auth?embed=1&return_to=%2Fme"></iframe></dialog>

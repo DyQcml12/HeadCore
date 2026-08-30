@@ -52,12 +52,15 @@ class ResponseEvaluator:
         if len(text) < 2:
             reasons.append("too_short")
         turn_signal = classify_turn_taking(user_input)
-        if turn_signal.low_information and len(text) > turn_signal.max_chars:
-            reasons.append("low_information_reply_too_long")
-        if turn_signal.asks_short_reply and len(text) > turn_signal.max_chars:
-            reasons.append("short_reply_request_ignored")
-        if turn_signal.pause_or_stop and len(text) > turn_signal.max_chars:
-            reasons.append("pause_request_overexpanded")
+        # Only explicit turn-taking requests are hard limits. Fatigue/mood
+        # signals guide tone, but must not reject a complete useful answer.
+        if turn_signal.should_minimize_reply:
+            if turn_signal.low_information and len(text) > turn_signal.max_chars:
+                reasons.append("low_information_reply_too_long")
+            if turn_signal.asks_short_reply and len(text) > turn_signal.max_chars:
+                reasons.append("short_reply_request_ignored")
+            if turn_signal.pause_or_stop and len(text) > turn_signal.max_chars:
+                reasons.append("pause_request_overexpanded")
         if contains_marker(text, AI_IDENTITY_MARKERS):
             reasons.append("claims_ai_identity")
         if is_identity_question(user_input) and not answers_identity_question(

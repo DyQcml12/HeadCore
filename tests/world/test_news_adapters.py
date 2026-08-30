@@ -259,3 +259,13 @@ def test_world_runtime_rejects_unknown_env_source_ids() -> None:
 
     with pytest.raises(ValueError, match="unknown world source ids"):
         build_world_runtime(settings)
+
+
+def test_world_runtime_rejects_configured_source_without_adapter() -> None:
+    settings = replace(
+        load_settings(),
+        world_source_enabled_ids="pboc-releases",
+    )
+
+    with pytest.raises(ValueError, match="not backed by an adapter"):
+        build_world_runtime(settings)

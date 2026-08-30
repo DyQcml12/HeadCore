@@ -53,7 +53,13 @@ from app.head.projection import render_continuity_timeline, render_head_projecti
 from app.head.state import build_head_state
 from app.head.world_model import build_head_world_model, project_head_world_model
 from app.head.world_evidence import cognitive_facts_from_world_result
-from app.head.world_model_store import load_head_world_model, save_head_world_model
+from app.head.world_model_store import (
+    append_conversation_world_event,
+    derive_head_world_model,
+    load_head_world_model,
+    merge_head_world_models,
+    save_head_world_model,
+)
 from app.head.long_term_planning import (
     activate_next_step,
     build_world_event_evidence,
@@ -120,6 +126,9 @@ __all__ = [
     "save_cognitive_fact",
     "build_head_world_model",
     "project_head_world_model",
+    "derive_head_world_model",
+    "merge_head_world_models",
+    "append_conversation_world_event",
     "cognitive_facts_from_world_result",
     "load_head_world_model",
     "save_head_world_model",

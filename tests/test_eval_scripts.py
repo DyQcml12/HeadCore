@@ -615,37 +615,6 @@ def test_persona_finetune_dataset_audit_marks_seed_as_not_ready(tmp_path: Path) 
     assert (output_dir / "dataset-audit-result.json").exists()
 
 
-def test_persona_training_plan_documents_direct_training_risks() -> None:
-    project_root = Path(__file__).resolve().parents[1]
-    doc = (project_root / "docs" / "persona-training-plan.md").read_text(encoding="utf-8")
-
-    assert "当前不建议直接训练一个模型替代现有链路" in doc
-    assert "200 条以上人工认可" in doc
-    assert "记忆、撤销、门禁" in doc
-
-
-def test_auditory_system_design_covers_local_streaming_chinese_asr() -> None:
-    project_root = Path(__file__).resolve().parents[1]
-    doc = (project_root / "docs" / "auditory-system-design.md").read_text(encoding="utf-8")
-
-    assert "本地运行" in doc
-    assert "流式" in doc
-    assert "中文" in doc
-    assert "FireRedASR2S" in doc
-    assert "Fun-ASR-Nano" in doc
-    assert "模型横评" in doc
-    assert "第一选择：FunASR" in doc
-    assert "SenseVoiceSmall" in doc
-    assert "Paraformer 2pass" in doc
-    assert "fsmn-vad" in doc
-    assert "ct-punc" in doc
-    assert "sherpa-onnx 只保留为轻量备选" in doc
-    assert "FunASR" in doc
-    assert "Whisper" in doc
-    assert "WS /api/v1/audio/transcribe/stream" in doc
-    assert "不能把 mock 当作功能完成" in doc
-
-
 def test_persona_gate_eval_all_controlled_replies_pass(tmp_path: Path) -> None:
     results = evaluate_cases(load_eval_cases())
     report_path = write_report(results, tmp_path)

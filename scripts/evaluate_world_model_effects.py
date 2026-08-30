@@ -27,6 +27,7 @@ from app.head.contracts import (
 from app.head.state import build_head_state
 from app.head.world_model import build_head_world_model, project_head_world_model
 from app.head.world_model_store import load_head_world_model, save_head_world_model
+from app.head.world_simulation import CounterfactualTrial, resolve_counterfactual_trials
 from app.mind.conversation_state import build_conversation_state
 from app.mind.self_state import build_self_state
 from app.mind.social_state import build_social_state
@@ -183,6 +184,79 @@ def _gap(
         "expected": expected,
         "observed": observed,
     }
+
+
+def _evaluate_dynamics() -> dict[str, str]:
+    """Exercise the bounded trial engine against a persisted-style event set."""
+    events = tuple(
+        WorldEvent(
+            event_id=event_id,
+            event_type=event_type,
+            actor_ids=("project", "server-a"),
+            occurred_at=occurred_at,
+            source_id="evaluation-runtime",
+            summary=summary,
+            confidence=0.9,
+        )
+        for event_id, event_type, occurred_at, summary in (
+            ("config-change", "config-change", "2026-07-29T03:30:00+00:00", "configuration changed"),
+            ("service-stop", "service-stop", "2026-07-29T03:35:00+00:00", "service stopped"),
+            ("rollback", "rollback", "2026-07-29T03:40:00+00:00", "rollback completed"),
+        )
+    )
+    hypothesis = CausalHypothesis(
+        "trial-cause",
+        "config-change",
+        "service-stop",
+        "configuration may cause a service stop",
+        0.9,
+        ("config-change",),
+        False,
+    )
+    supported = resolve_counterfactual_trials(
+        (hypothesis,),
+        (
+            CounterfactualTrial(
+                "trial-supported",
+                "trial-cause",
+                "service-stop",
+                counter_event_types=("rollback",),
+                created_at="2026-07-29T03:30:00+00:00",
+                horizon_days=1,
+            ),
+        ),
+        events[:2],
+        now=dt.datetime(2026, 7, 29, 4, tzinfo=dt.UTC),
+    )
+    refuted = resolve_counterfactual_trials(
+        (hypothesis,),
+        (
+            CounterfactualTrial(
+                "trial-refuted",
+                "trial-cause",
+                "service-stop",
+                counter_event_types=("rollback",),
+                created_at="2026-07-29T03:30:00+00:00",
+                horizon_days=1,
+            ),
+        ),
+        events,
+        now=dt.datetime(2026, 7, 29, 4, tzinfo=dt.UTC),
+    )
+    return _scenario(
+        "world_dynamics_prediction",
+        "bounded world-state prediction and counterfactual trial",
+        passed=(
+            supported.trials[0].status == "supported"
+            and refuted.trials[0].status == "refuted"
+        ),
+        expected="explicit event hypotheses resolve deterministically as supported or refuted",
+        observed=(
+            f"supported={supported.trials[0].status};"
+            f"refuted={refuted.trials[0].status}"
+        ),
+        level="L4",
+    )
 
 
 def _evaluate_graph_rules() -> list[dict[str, str]]:
@@ -620,7 +694,8 @@ async def _evaluate_runtime_effects(runtime_root: Path) -> list[dict[str, str]]:
             level="L3",
         )
 
-    dynamics = _gap(
+    dynamics = _evaluate_dynamics()
+    legacy_dynamics = _gap(
         "world_dynamics_prediction",
         "基于持续世界状态进行预测和反事实模拟",
         expected="输入行动与状态后产生可验证预测，并能用后续观察校准",

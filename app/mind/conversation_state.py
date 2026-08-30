@@ -66,7 +66,7 @@ def infer_current_topic(user_input: str, previous_user_input: str = "") -> str:
 def infer_recent_user_mood(text: str) -> str:
     if any(marker in text for marker in ("崩溃", "焦虑", "委屈", "想哭", "难受")):
         return "vulnerable"
-    if any(marker in text for marker in ("烦", "气", "离谱", "别嘴臭", "别演")):
+    if any(marker in text for marker in ("烦", "生气", "气死", "气人", "离谱", "别嘴臭", "别演")):
         return "frustrated"
     if any(marker in text for marker in ("开心", "好耶", "哈哈", "成功")):
         return "positive"

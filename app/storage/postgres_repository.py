@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import sys
 from typing import Any
 
 from app.core.config import Settings
@@ -38,14 +40,25 @@ class PostgreSQLChatRepository(MySQLChatRepository):
                 "Install dependencies with `python -m pip install -r requirements.txt`."
             ) from exc
 
-        return await psycopg.AsyncConnection.connect(
-            host=self.settings.postgres_host,
-            port=self.settings.postgres_port,
-            dbname=self.settings.postgres_database,
-            user=self.settings.postgres_user,
-            password=self.settings.postgres_password,
-            row_factory=dict_row,
-        )
+        connect_kwargs = {
+            "host": self.settings.postgres_host,
+            "port": self.settings.postgres_port,
+            "dbname": self.settings.postgres_database,
+            "user": self.settings.postgres_user,
+            "password": self.settings.postgres_password,
+            "row_factory": dict_row,
+        }
+        # psycopg's async driver relies on add_reader/add_writer, which the
+        # Windows ProactorEventLoop intentionally does not provide. Uvicorn's
+        # CLI can select that loop even though app.main sets a selector policy,
+        # so keep the repository usable by moving synchronous psycopg work to
+        # a worker thread in that environment.
+        loop = asyncio.get_running_loop()
+        is_windows_proactor = sys.platform == "win32" and loop.__class__.__name__ == "ProactorEventLoop"
+        if is_windows_proactor:
+            connection = await asyncio.to_thread(psycopg.connect, **connect_kwargs)
+            return _ThreadedPostgresConnection(connection)
+        return await psycopg.AsyncConnection.connect(**connect_kwargs)
 
     async def _execute(self, sql: str, params: tuple[Any, ...]) -> int:
         connection = await self._connect()
@@ -82,3 +95,43 @@ class PostgreSQLChatRepository(MySQLChatRepository):
         finally:
             await cursor.close()
             await connection.close()
+
+
+class _ThreadedPostgresConnection:
+    """Async-shaped adapter for psycopg's blocking connection on Proactor."""
+
+    def __init__(self, connection: Any) -> None:
+        self._connection = connection
+
+    def cursor(self) -> "_ThreadedPostgresCursor":
+        return _ThreadedPostgresCursor(self._connection.cursor())
+
+    async def commit(self) -> None:
+        await asyncio.to_thread(self._connection.commit)
+
+    async def rollback(self) -> None:
+        await asyncio.to_thread(self._connection.rollback)
+
+    async def close(self) -> None:
+        await asyncio.to_thread(self._connection.close)
+
+
+class _ThreadedPostgresCursor:
+    def __init__(self, cursor: Any) -> None:
+        self._cursor = cursor
+
+    @property
+    def rowcount(self) -> int:
+        return int(self._cursor.rowcount or 0)
+
+    async def execute(self, sql: str, params: tuple[Any, ...]) -> None:
+        await asyncio.to_thread(self._cursor.execute, sql, params)
+
+    async def fetchone(self) -> Any:
+        return await asyncio.to_thread(self._cursor.fetchone)
+
+    async def fetchall(self) -> list[Any]:
+        return await asyncio.to_thread(self._cursor.fetchall)
+
+    async def close(self) -> None:
+        await asyncio.to_thread(self._cursor.close)

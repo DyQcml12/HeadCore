@@ -4,10 +4,23 @@ from dataclasses import dataclass
 
 from fastapi import APIRouter, Header, HTTPException
 
-from app.camera.contracts import CameraObservation, CameraSession, CameraSessionStartRequest
+from app.camera.contracts import (
+    CameraDemoScenario,
+    CameraObservation,
+    CameraSession,
+    CameraSessionMode,
+    CameraSessionStartRequest,
+)
+from app.camera.browser_runtime import BrowserFrameProcessor
+from app.camera.demo_runtime import DemoCaptureController
 from app.camera.evidence_store import CameraEvidenceStore
 from app.camera.normalization import camera_observation_to_world_observation
-from app.camera.local_runtime import LocalCaptureController, LocalVisionAnalyzer
+from app.camera.local_runtime import (
+    LOCAL_VISION_MIN_CONFIDENCE,
+    LocalCaptureController,
+    LocalVisionAnalyzer,
+    inspect_local_vision_capabilities,
+)
 from app.camera.session_manager import CameraSessionManager
 from app.camera.temporal_state import CameraTemporalState
 from app.control import routes as control_routes
@@ -20,6 +33,9 @@ class CameraControlRuntime:
     capture: LocalCaptureController
     temporal_state: CameraTemporalState
     evidence_store: CameraEvidenceStore
+    demo: DemoCaptureController
+    browser: BrowserFrameProcessor
+    capabilities: dict[str, object]
 
     def start_consent_session(
         self,
@@ -41,6 +57,8 @@ class CameraControlRuntime:
 
     def stop_session(self, session_id: str, *, owner_key: str) -> CameraSession | None:
         self.capture.stop(session_id)
+        self.demo.stop(session_id)
+        self.browser.stop(session_id)
         session = self.manager.stop(session_id, owner_key=owner_key)
         if session is not None:
             self.temporal_state.remove_session(session_id)
@@ -51,15 +69,47 @@ class CameraControlRuntime:
         for session_id in self.manager.owned_session_ids(owner_key=owner_key):
             self.stop_session(session_id, owner_key=owner_key)
 
+    def start_capture(self, session: CameraSession):
+        if session.mode == CameraSessionMode.DEMO:
+            return self.demo.start(
+                session_id=session.session_id,
+                scenario=session.demo_scenario or CameraDemoScenario.DESK_WORK,
+            )
+        return self.capture.start(session_id=session.session_id, camera_slot=session.camera_slot)
+
+    def capture_status(self, session: CameraSession) -> dict[str, object] | None:
+        if session.mode == CameraSessionMode.DEMO:
+            return self.demo.status(session.session_id)
+        return self.capture.status(session.session_id)
+
+    def stop_capture(self, session: CameraSession):
+        if session.mode == CameraSessionMode.DEMO:
+            return self.demo.stop(session.session_id)
+        return self.capture.stop(session.session_id)
+
+    def start_browser_capture(self, session: CameraSession):
+        return self.browser.start(session_id=session.session_id)
+
+    def browser_capture_status(self, session: CameraSession) -> dict[str, object] | None:
+        return self.browser.status(session.session_id)
+
+    def stop_browser_capture(self, session: CameraSession):
+        return self.browser.stop(session.session_id)
+
+    def process_browser_frame(self, session: CameraSession, payload: bytes) -> dict[str, object]:
+        return self.browser.process(session_id=session.session_id, payload=payload)
+
 
 def build_camera_control_runtime(settings: Settings) -> CameraControlRuntime:
     manager = CameraSessionManager(
         perception_enabled=settings.camera_perception_enabled,
         local_capture_enabled=settings.camera_local_capture_enabled,
+        demo_enabled=settings.camera_demo_enabled,
         max_session_seconds=settings.camera_session_max_seconds,
         raw_frame_retention_seconds=settings.camera_raw_frame_retention_seconds,
         face_identification_enabled=settings.camera_face_identification_enabled,
         cloud_upload_enabled=settings.camera_cloud_upload_enabled,
+        minimum_observation_confidence=LOCAL_VISION_MIN_CONFIDENCE,
     )
     temporal_state = CameraTemporalState(
         confirmation_count=settings.camera_temporal_confirmation_count,
@@ -68,6 +118,10 @@ def build_camera_control_runtime(settings: Settings) -> CameraControlRuntime:
     evidence_store = CameraEvidenceStore(
         max_age_seconds=settings.camera_observation_ttl_seconds,
     )
+    capabilities = inspect_local_vision_capabilities(
+        yolo_model_path=settings.camera_yolo_model_path,
+        enable_mediapipe=settings.camera_mediapipe_enabled,
+    ).as_dict()
     def analyzer_factory() -> LocalVisionAnalyzer:
         return LocalVisionAnalyzer(
             yolo_model_path=settings.camera_yolo_model_path,
@@ -90,11 +144,23 @@ def build_camera_control_runtime(settings: Settings) -> CameraControlRuntime:
         observation_callback=accept_capture_observation,
         session_active=manager.is_active_for_capture,
     )
+    demo = DemoCaptureController(
+        observation_callback=accept_capture_observation,
+        interval_seconds=max(0.2, min(settings.camera_capture_interval_seconds, 5.0)),
+    )
+    browser = BrowserFrameProcessor(
+        analyzer_factory=analyzer_factory,
+        observation_callback=accept_capture_observation,
+        session_active=manager.is_active_for_capture,
+    )
     return CameraControlRuntime(
         manager=manager,
         capture=capture,
         temporal_state=temporal_state,
         evidence_store=evidence_store,
+        demo=demo,
+        browser=browser,
+        capabilities=capabilities,
     )
 
 
@@ -206,9 +272,9 @@ def create_camera_control_router(
             raise HTTPException(status_code=404, detail={"code": "camera_session_not_found"})
         if session.status != "active":
             raise HTTPException(status_code=409, detail={"code": "camera_session_not_active"})
-        job = capture.start(session_id=session_id, camera_slot=session.camera_slot)
+        job = runtime.start_capture(session)
         await control_routes.audit_control_result(actor, "camera_capture_start", True, "started")
-        return {"started": True, "session_id": session_id, **(capture.status(job.session_id) or {})}
+        return {"started": True, "session_id": session_id, **(runtime.capture_status(session) or {})}
 
     @router.get("/api/control/camera/sessions/{session_id}/capture/status")
     async def camera_capture_status(
@@ -218,9 +284,10 @@ def create_camera_control_router(
         x_hutao_actor_group_id: str | None = Header(default=None),
     ) -> dict[str, object]:
         actor = await authorize(x_hutao_actor_platform, x_hutao_actor_user_id, x_hutao_actor_group_id)
-        if manager.get(session_id, owner_key=owner_key(actor)) is None:
+        session = manager.get(session_id, owner_key=owner_key(actor))
+        if session is None:
             raise HTTPException(status_code=404, detail={"code": "camera_session_not_found"})
-        return capture.status(session_id) or {"running": False, "reason_code": "not_started"}
+        return runtime.capture_status(session) or {"running": False, "reason_code": "not_started"}
 
     @router.get("/api/control/camera/sessions/{session_id}/perception/status")
     async def camera_perception_status(
@@ -256,9 +323,10 @@ def create_camera_control_router(
         x_hutao_actor_group_id: str | None = Header(default=None),
     ) -> dict[str, object]:
         actor = await authorize(x_hutao_actor_platform, x_hutao_actor_user_id, x_hutao_actor_group_id)
-        if manager.get(session_id, owner_key=owner_key(actor)) is None:
+        session = manager.get(session_id, owner_key=owner_key(actor))
+        if session is None:
             raise HTTPException(status_code=404, detail={"code": "camera_session_not_found"})
-        job = capture.stop(session_id)
+        job = runtime.stop_capture(session)
         await control_routes.audit_control_result(actor, "camera_capture_stop", True, "stopped")
         return {"stopped": True, "session_id": session_id, "was_running": bool(job)}
 

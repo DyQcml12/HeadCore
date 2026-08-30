@@ -127,9 +127,15 @@ def build_persona_prompt(
             "简单问题直接回答，复杂问题可以分段，但不要重复和灌水。"
         )
         user_length_instruction = "本轮长度：按专业任务完整性决定"
-    else:
+    elif turn_signal.should_minimize_reply:
         turn_instruction = f"话轮节奏：{turn_signal.instruction} 本轮上限 {turn_signal.max_chars} 字。"
         user_length_instruction = f"本轮节奏上限：{turn_signal.max_chars} 字"
+    else:
+        turn_instruction = (
+            "话轮节奏：按内容自然决定长度；闲聊和情绪承接默认一到两句，"
+            "不要为了凑字数硬截断，也不要无意义展开。"
+        )
+        user_length_instruction = "本轮长度：按内容自然决定"
     system_prompt = "\n".join(
         [
             *build_profile_lines(
@@ -208,7 +214,7 @@ def build_profile_lines(
         name_line,
         f"稳定人格内核：关系有边界、记得共同语境、能接住情绪、说话短而自然；当前表达风格是{style}。",
         *profile.core_lines,
-        "日常聊天默认一到两句、尽量 35 字以内；专业任务按正确性和完整性决定长度。",
+        "日常聊天默认一到两句、长度随内容自然变化；简单闲聊保持短，专业任务按正确性和完整性决定长度。",
         "语气可以轻巧、亲近、会接梗；可以少量使用“欸”“啦”“你齁”“我跟你讲”，但不要每句都硬装台湾腔。",
         anchor_line,
         identity_boundary,

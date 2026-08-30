@@ -8,9 +8,18 @@ const authParams = new URLSearchParams(location.search);
 const isEmbedded = authParams.get("embed") === "1";
 document.body.classList.toggle("auth-embedded", isEmbedded);
 const requestedReturnTo = authParams.get("return_to");
-const safeReturnTo = requestedReturnTo?.startsWith("/") && !requestedReturnTo.startsWith("//")
-  ? requestedReturnTo
-  : "";
+function resolveSafeReturnTo(value) {
+  if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) return "";
+  try {
+    const target = new URL(value, location.origin);
+    if (target.origin !== location.origin) return "";
+    if (!(target.pathname === "/desk" || target.pathname === "/me")) return "";
+    return `${target.pathname}${target.search}${target.hash}`;
+  } catch {
+    return "";
+  }
+}
+const safeReturnTo = resolveSafeReturnTo(requestedReturnTo);
 const serviceState = {
   authenticationEnabled: null,
   registrationEnabled: false,
@@ -36,7 +45,8 @@ function applyTheme(theme) {
   button.setAttribute("aria-label", "切换到" + nextLabel + "模式");
   button.title = "切换到" + nextLabel + "模式";
   $(".theme-toggle-label").textContent = nextLabel;
-  $(".theme-toggle-icon").textContent = isLight ? "☀" : "◐";
+  const icon = $(".theme-toggle-icon");
+  if (icon) icon.dataset.theme = isLight ? "light" : "dark";
   document.querySelector('meta[name="theme-color"]').setAttribute("content", isLight ? "#f5f7f6" : "#0b111c");
 }
 
@@ -319,9 +329,10 @@ $("#resetRequestForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
   if (!serviceState.passwordResetEnabled || !validate(form)) return;
+  const payload = Object.fromEntries(new FormData(form));
   setBusy(form, true, "正在发送");
   try {
-    await post("password-reset/request", Object.fromEntries(new FormData(form)));
+    await post("password-reset/request", payload);
     form.reset();
     showMode("resetConfirm", "如果该邮箱可以重置，重置码已发送。请检查收件箱和垃圾邮件。", true);
   } catch (error) {
@@ -335,9 +346,10 @@ $("#resetConfirmForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
   if (!serviceState.passwordResetEnabled || !validate(form)) return;
+  const payload = Object.fromEntries(new FormData(form));
   setBusy(form, true, "正在更新");
   try {
-    await post("password-reset/confirm", Object.fromEntries(new FormData(form)));
+    await post("password-reset/confirm", payload);
     form.reset();
     showMode("login", "密码已更新，请使用新密码登录。旧设备已退出登录。", true);
   } catch (error) {
@@ -373,9 +385,10 @@ $("#verifyForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
   if (!serviceState.registrationEnabled || !validate(form)) return;
+  const payload = Object.fromEntries(new FormData(form));
   setBusy(form, true, "正在验证");
   try {
-    await post("verify-email", Object.fromEntries(new FormData(form)));
+    await post("verify-email", payload);
     sessionStorage.removeItem("hutao_pending_email");
     showMode("verified");
   } catch (error) {

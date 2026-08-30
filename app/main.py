@@ -22,7 +22,12 @@ from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
 
 from app.audio.chat_input import prepare_audio_chat_input
-from app.audio.file_service import save_upload_to_temp, transcribe_audio_file, warmup_audio_pipeline
+from app.audio.file_service import (
+    AudioUploadValidationError,
+    save_upload_to_temp,
+    transcribe_audio_file,
+    warmup_audio_pipeline,
+)
 from app.audio.schemas import AsrFileResponse, AudioChatFileResponse, PreparedAudioChatFileResponse
 from app.audio.websocket_routes import router as audio_router
 from app.auth.identity import (
@@ -32,11 +37,12 @@ from app.auth.identity import (
     resolve_web_identity,
 )
 from app.auth.runtime import configure_public_web_auth
-from app.camera.router import build_camera_control_runtime, create_camera_control_router
 from app.channels.adapters import CoreApiEventAdapter
 from app.channels.contracts import ChannelEvent
 from app.control.routes import router as control_router
+from app.control.access import configure_control_web_runtime, control_access_middleware
 from app.core.config import PROJECT_ROOT, load_settings
+from app.desktop.router import create_desktop_router
 from app.database_control.mysql_adapter import build_mysql_database_control_adapter
 from app.database_control.persona_audit import DatabasePersonaControlAuditSink
 from app.database_control.router import create_database_control_router
@@ -65,6 +71,8 @@ from app.persona_management.sandbox import (
 from app.persona_management.sandbox_router import create_sandbox_persona_router
 from app.schemas import (
     ChatRequest,
+    ChatHistoryResponse,
+    ChatHistoryMessage,
     ChatResponse,
     DeleteMemoryResponse,
     DialogueContextResponse,
@@ -76,6 +84,10 @@ from app.schemas import (
     WebVoiceSynthesisRequest,
 )
 from app.services.chat_service import ChatService
+from app.services.model_client import (
+    close_shared_deepseek_clients,
+    get_shared_deepseek_client,
+)
 from app.storage.chat_repository import ChatRepository
 from app.storage.repository_factory import create_chat_repository
 from app.storage.v2_runtime import (
@@ -85,13 +97,13 @@ from app.storage.v2_runtime import (
     try_handle_database_v2_platform_message,
 )
 from app.voice_chat.tts_service import VoiceSynthesisResult, synthesize_voice_reply
+from app.voice_chat.tts_service import check_voice_provider_ready
 from app.voice_chat.web_tts import (
     WebVoiceReplyBusyError,
     WebVoiceReplyNotFoundError,
     WebVoiceReplyRateLimitError,
     WebVoiceReplyStore,
 )
-from app.workbench.router import create_visual_workbench_router
 
 
 settings = load_settings()
@@ -119,12 +131,10 @@ def _resolve_web_voice_tts_output_root(relative_path: str) -> Path:
 memory_projection_provider = build_memory_projection_provider(settings)
 app = FastAPI(title=settings.app_name)
 app.mount("/site/assets", StaticFiles(directory=SITE_STATIC_ROOT / "assets"), name="public-site-assets")
+app.include_router(create_desktop_router(settings))
 app.include_router(audio_router)
 app.include_router(openai_compat_router)
 app.include_router(control_router)
-camera_control_runtime = build_camera_control_runtime(settings)
-app.include_router(create_camera_control_router(settings, runtime=camera_control_runtime))
-app.include_router(create_visual_workbench_router(settings, camera_control_runtime))
 database_control_repository = build_mysql_database_control_adapter(settings)
 database_control_service = DatabaseControlService(database_control_repository)
 app.include_router(create_database_control_router(database_control_service))
@@ -137,6 +147,15 @@ app.include_router(create_knowledge_control_router(knowledge_control_service))
 public_web_auth_runtime = configure_public_web_auth(app, settings)
 public_web_auth_configured = public_web_auth_runtime.authentication_enabled
 public_web_auth_service = public_web_auth_runtime.service
+configure_control_web_runtime(
+    enabled=public_web_auth_configured or bool(settings.control_admin_emails.strip()),
+    auth_service=public_web_auth_service,
+    admin_emails=settings.control_admin_emails,
+    local_only=settings.control_local_only,
+)
+# Every control API, including feature-specific control routers registered
+# above, shares the same web-admin gate when public authentication is enabled.
+app.middleware("http")(control_access_middleware)
 public_web_auth_uses_database_v2_profiles = public_web_auth_runtime.database_v2_profile_source
 public_web_registration_configured = public_web_auth_runtime.registration_enabled
 public_web_password_reset_configured = public_web_auth_runtime.password_reset_enabled
@@ -255,18 +274,18 @@ async def desk_style_css() -> FileResponse:
     )
 
 
-@app.get("/desk/mobile.css", include_in_schema=False)
-async def desk_mobile_css() -> FileResponse:
-    return FileResponse(
-        DESK_STATIC_ROOT / "mobile.css",
-        media_type="text/css",
-        headers={"Cache-Control": "no-store"},
-    )
-
-
 @app.get("/desk/manifest.webmanifest", include_in_schema=False)
 async def desk_manifest() -> FileResponse:
     return FileResponse(DESK_STATIC_ROOT / "manifest.webmanifest", media_type="application/manifest+json")
+
+
+@app.get("/desk/icon.svg", include_in_schema=False)
+async def desk_icon() -> FileResponse:
+    return FileResponse(
+        DESK_STATIC_ROOT / "icon.svg",
+        media_type="image/svg+xml",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 @app.get("/desk/service-worker.js", include_in_schema=False)
@@ -327,15 +346,13 @@ if persona_persistence_configured:
 
 
 def build_runtime_chat_service(*, repository=None) -> ChatService:  # type: ignore[no-untyped-def]
-    kwargs = {}
+    kwargs = {"client": get_shared_deepseek_client(settings)}
     if repository is not None:
         kwargs["repository"] = repository
     if memory_projection_provider is not None:
         kwargs["memory_projection_provider"] = memory_projection_provider
     if persona_runtime_projection_provider is not None:
         kwargs["persona_projection_provider"] = persona_runtime_projection_provider
-    if camera_control_runtime is not None:
-        kwargs["camera_context_provider"] = camera_control_runtime.evidence_store
     service = ChatService(settings, **kwargs)
     service.sandbox_persona_projection_provider = sandbox_persona_service
     return service
@@ -367,10 +384,64 @@ async def public_auth_status() -> PublicAuthStatusResponse:
 
 @app.get("/api/v1/voice/status", response_model=PublicWebVoiceStatusResponse)
 async def public_web_voice_status() -> PublicWebVoiceStatusResponse:
+    provider_ready = False
+    if public_web_tts_configured:
+        provider_ready = await run_in_threadpool(
+            check_voice_provider_ready,
+            provider=settings.public_web_tts_provider,
+            base_url=settings.public_web_tts_base_url,
+            timeout_seconds=1,
+        )
     return PublicWebVoiceStatusResponse(
         enabled=public_web_tts_configured,
         max_reply_chars=settings.public_web_tts_max_reply_chars,
+        provider_ready=provider_ready,
+        provider=settings.public_web_tts_provider,
+        base_url=settings.public_web_tts_base_url,
     )
+
+
+@app.get("/api/v1/capabilities")
+async def public_capabilities() -> dict[str, object]:
+    """Expose the real capability boundary used by the web workspaces."""
+    return {
+        "chat": {"enabled": True, "provider": settings.model_provider, "model": settings.model_name},
+        "memory": {
+            "enabled": bool(settings.semantic_memory_enabled),
+            "backend": settings.storage_backend,
+        },
+        "voice": {
+            "enabled": public_web_tts_configured,
+            "provider": settings.public_web_tts_provider,
+            "status_url": "/api/v1/voice/status",
+        },
+        "tools": {
+            "world_read": {
+                "enabled": bool(settings.world_awareness_enabled),
+                "label": "天气、新闻与政策只读查询",
+            },
+            "web_search": {
+                "enabled": bool(settings.world_awareness_enabled and settings.web_search_enabled),
+                "label": "通用网页搜索（实时获取，不写本地存储）",
+                "provider": settings.web_search_provider,
+            },
+            "code_interpreter": {
+                "enabled": False,
+                "label": "代码解释器",
+                "reason": "当前项目未提供隔离执行后端",
+            },
+            "computer_control": {
+                "enabled": False,
+                "label": "电脑控制",
+                "reason": "仅保留权限策略，执行端未接入网页对话",
+            },
+        },
+        "vision": {
+            "enabled": False,
+            "label": "视觉模块",
+            "reason": "按项目决策已封存，不在网页中启用",
+        },
+    }
 
 
 @app.post("/api/v1/voice/synthesize")
@@ -408,15 +479,18 @@ async def synthesize_public_web_voice(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="voice reply is too long")
 
     output_dir = web_voice_tts_output_root / reply.reply_id
+    total_budget = max(1, settings.public_web_tts_total_budget_seconds)
     try:
-        result: VoiceSynthesisResult = await run_in_threadpool(
-            synthesize_voice_reply,
-            user_input="网页语音播放",
-            reply_text=reply.text,
-            output_dir=output_dir,
-            base_url=settings.public_web_tts_base_url,
-            provider=settings.public_web_tts_provider,
-        )
+        async with asyncio.timeout(total_budget):
+            result: VoiceSynthesisResult = await run_in_threadpool(
+                synthesize_voice_reply,
+                user_input="网页语音播放",
+                reply_text=reply.text,
+                output_dir=output_dir,
+                base_url=settings.public_web_tts_base_url,
+                provider=settings.public_web_tts_provider,
+                timeout_seconds=min(180, total_budget),
+            )
         audio_path = result.send_path.resolve()
         if not audio_path.is_file() or not audio_path.is_relative_to(output_dir.resolve()):
             raise RuntimeError("web voice output escaped its request directory")
@@ -473,7 +547,11 @@ async def chat(
         if use_v2_chat_storage
         else build_head_runtime()
     )
-    response = await runtime.handle(channel_event, _head_runtime_context(request, chat_user_id))
+    context = _head_runtime_context(request, chat_user_id)
+    if request.input_source == "audio":
+        response = await _reply_with_audio_budget(runtime, channel_event, context)
+    else:
+        response = await runtime.handle(channel_event, context)
     return await _web_voice_chat_response(
         request,
         response.model_copy(update={"text": normalize_core_api_text(response.text)}),
@@ -570,6 +648,22 @@ async def limit_audio_stream_to_realtime_budget(
                 yield chunk
     except TimeoutError:
         yield "\u8fd9\u6b21\u56de\u590d\u8017\u65f6\u8fc7\u957f\uff0c\u8bf7\u70b9\u51fb\u91cd\u8bd5\u3002"
+
+
+async def _reply_with_audio_budget(runtime, channel_event, context) -> ChatResponse:
+    """Bound a non-streaming audio chat reply to the realtime voice budget."""
+    try:
+        async with asyncio.timeout(settings.voice_chat_reply_timeout_seconds):
+            return await runtime.handle(channel_event, context)
+    except TimeoutError:
+        return ChatResponse(
+            text="\u8fd9\u6b21\u56de\u590d\u8017\u65f6\u8fc7\u957f\uff0c\u8bf7\u70b9\u51fb\u91cd\u8bd5\u3002",
+            provider="local",
+            model="audio-chat-timeout",
+            used_live_api=False,
+            fallback_used=True,
+            error="audio chat reply exceeded the realtime budget",
+        )
 
 
 def _web_voice_streaming_response(
@@ -717,9 +811,25 @@ async def _validate_sandbox_persona_request(request: ChatRequest) -> None:
 
 
 @app.post("/api/v1/audio/transcribe/file", response_model=AsrFileResponse)
-async def transcribe_audio_file_endpoint(file: UploadFile = File(...)) -> AsrFileResponse:
-    audio_path = await save_upload_to_temp(file)
-    return await run_in_threadpool(transcribe_audio_file, audio_path)
+async def transcribe_audio_file_endpoint(
+    file: UploadFile = File(...),
+    hutao_session: str | None = Cookie(default=None, alias="hutao_session"),
+    csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+    authorization: str | None = Header(default=None),
+) -> AsrFileResponse:
+    await _authenticated_identity(
+        user_id="local-audio-user",
+        session_id="local-audio-transcription",
+        session_token=hutao_session,
+        csrf_token=csrf_token,
+        require_csrf=True,
+        authorization=authorization,
+    )
+    audio_path = await _save_audio_upload(file)
+    try:
+        return await run_in_threadpool(transcribe_audio_file, audio_path)
+    finally:
+        audio_path.unlink(missing_ok=True)
 
 
 @app.post("/api/v1/audio/chat/prepare/file", response_model=PreparedAudioChatFileResponse)
@@ -739,25 +849,28 @@ async def prepare_audio_chat_file_endpoint(
         require_csrf=True,
         authorization=authorization,
     )
-    audio_path = await save_upload_to_temp(file)
-    transcription = await run_in_threadpool(
-        transcribe_audio_file,
-        audio_path,
-        include_emotion=False,
-    )
-    prepared_audio_input = prepare_audio_chat_input(transcription)
-    return PreparedAudioChatFileResponse(
-        transcript_text=transcription.text,
-        chat_input_text=prepared_audio_input.text,
-        chat_bypassed_due_to_asr_quality=prepared_audio_input.should_clarify,
-        chat_bypass_reasons=prepared_audio_input.clarify_reasons,
-        clarification_reply=(
-            prepared_audio_input.clarification_reply
-            if prepared_audio_input.should_clarify
-            else None
-        ),
-        asr=transcription,
-    )
+    audio_path = await _save_audio_upload(file)
+    try:
+        transcription = await run_in_threadpool(
+            transcribe_audio_file,
+            audio_path,
+            include_emotion=False,
+        )
+        prepared_audio_input = prepare_audio_chat_input(transcription)
+        return PreparedAudioChatFileResponse(
+            transcript_text=transcription.text,
+            chat_input_text=prepared_audio_input.text,
+            chat_bypassed_due_to_asr_quality=prepared_audio_input.should_clarify,
+            chat_bypass_reasons=prepared_audio_input.clarify_reasons,
+            clarification_reply=(
+                prepared_audio_input.clarification_reply
+                if prepared_audio_input.should_clarify
+                else None
+            ),
+            asr=transcription,
+        )
+    finally:
+        audio_path.unlink(missing_ok=True)
 
 
 @app.post("/api/v1/audio/chat/file", response_model=AudioChatFileResponse)
@@ -779,56 +892,72 @@ async def audio_chat_file_endpoint(
     )
     session_id = identity.session_id
     user_id = identity.profile_id
-    audio_path = await save_upload_to_temp(file)
-    transcription = await run_in_threadpool(transcribe_audio_file, audio_path)
-    prepared_audio_input = prepare_audio_chat_input(transcription)
-    if prepared_audio_input.should_clarify:
-        chat_response = ChatResponse(
-            text=prepared_audio_input.clarification_reply,
-            provider="local",
-            model="audio-chat-quality-gate",
-            used_live_api=False,
-            fallback_used=True,
-            error="ASR quality gate requested clarification: "
-            + ",".join(prepared_audio_input.clarify_reasons),
+    audio_path = await _save_audio_upload(file)
+    try:
+        transcription = await run_in_threadpool(transcribe_audio_file, audio_path)
+        prepared_audio_input = prepare_audio_chat_input(transcription)
+        if prepared_audio_input.should_clarify:
+            chat_response = ChatResponse(
+                text=prepared_audio_input.clarification_reply,
+                provider="local",
+                model="audio-chat-quality-gate",
+                used_live_api=False,
+                fallback_used=True,
+                error="ASR quality gate requested clarification: "
+                + ",".join(prepared_audio_input.clarify_reasons),
+            )
+        else:
+            audio_event = CoreApiEventAdapter().adapt(
+                {
+                    "user_input": prepared_audio_input.text,
+                    "session_id": session_id,
+                    "user_id": user_id,
+                }
+            )
+            runtime = (
+                build_head_runtime(repository=build_database_v2_chat_repository(settings))
+                if public_web_auth_configured
+                and public_web_auth_uses_database_v2_profiles
+                and not _web_chat_uses_postgres()
+                else build_head_runtime()
+            )
+            chat_response = await _reply_with_audio_budget(
+                runtime,
+                audio_event,
+                HeadRuntimeContext(
+                    subject_id=user_id,
+                    session_id=session_id,
+                    input_source="audio",
+                    input_quality_passed=transcription.quality_passed,
+                    input_quality_reasons=tuple(transcription.quality_reasons),
+                    input_emotion=transcription.emotion,
+                    input_emotion_source=transcription.emotion_source,
+                    input_emotion_confidence=transcription.emotion_confidence,
+                ),
+            )
+        return AudioChatFileResponse(
+            transcript_text=transcription.text,
+            chat_input_text=prepared_audio_input.text,
+            chat_bypassed_due_to_asr_quality=prepared_audio_input.should_clarify,
+            chat_bypass_reasons=prepared_audio_input.clarify_reasons,
+            reply_text=chat_response.text,
+            asr=transcription,
+            chat=chat_response,
         )
-    else:
-        audio_event = CoreApiEventAdapter().adapt(
-            {
-                "user_input": prepared_audio_input.text,
-                "session_id": session_id,
-                "user_id": user_id,
-            }
+    finally:
+        audio_path.unlink(missing_ok=True)
+
+
+async def _save_audio_upload(file: UploadFile) -> Path:
+    try:
+        return await save_upload_to_temp(
+            file,
+            max_bytes=settings.audio_upload_max_bytes,
+            allowed_extensions=settings.audio_upload_allowed_extensions,
+            allowed_content_types=settings.audio_upload_allowed_content_types,
         )
-        runtime = (
-            build_head_runtime(repository=build_database_v2_chat_repository(settings))
-            if public_web_auth_configured
-            and public_web_auth_uses_database_v2_profiles
-            and not _web_chat_uses_postgres()
-            else build_head_runtime()
-        )
-        chat_response = await runtime.handle(
-            audio_event,
-            HeadRuntimeContext(
-                subject_id=user_id,
-                session_id=session_id,
-                input_source="audio",
-                input_quality_passed=transcription.quality_passed,
-                input_quality_reasons=tuple(transcription.quality_reasons),
-                input_emotion=transcription.emotion,
-                input_emotion_source=transcription.emotion_source,
-                input_emotion_confidence=transcription.emotion_confidence,
-            ),
-        )
-    return AudioChatFileResponse(
-        transcript_text=transcription.text,
-        chat_input_text=prepared_audio_input.text,
-        chat_bypassed_due_to_asr_quality=prepared_audio_input.should_clarify,
-        chat_bypass_reasons=prepared_audio_input.clarify_reasons,
-        reply_text=chat_response.text,
-        asr=transcription,
-        chat=chat_response,
-    )
+    except AudioUploadValidationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
 @app.get("/api/v1/memories", response_model=MemoryListResponse)
@@ -844,6 +973,7 @@ async def list_memories(
         user_id=identity.profile_id,
         limit=min(max(limit, 1), 100),
     )
+
     return MemoryListResponse(
         memories=[
             MemoryResponse(
@@ -858,6 +988,41 @@ async def list_memories(
             )
             for record in records
         ]
+    )
+
+
+@app.get("/api/v1/chat/history", response_model=ChatHistoryResponse)
+async def chat_history(
+    session_id: str = "default",
+    user_id: str = "default-user",
+    limit: int = 80,
+    hutao_session: str | None = Cookie(default=None, alias="hutao_session"),
+    authorization: str | None = Header(default=None),
+) -> ChatHistoryResponse:
+    identity = await _authenticated_identity(
+        user_id=user_id,
+        session_id=session_id,
+        session_token=hutao_session,
+        authorization=authorization,
+        csrf_token=None,
+        require_csrf=False,
+    )
+    records = await _authenticated_profile_repository().list_recent_messages(
+        session_id=identity.session_id,
+        limit=min(max(limit, 1), 100),
+    )
+    owned_records = [record for record in records if record.user_id == identity.profile_id]
+    return ChatHistoryResponse(
+        session_id=identity.session_id,
+        messages=[
+            ChatHistoryMessage(
+                id=record.id,
+                role=record.role,
+                content=record.content,
+                created_at=record.created_at,
+            )
+            for record in owned_records
+        ],
     )
 
 
@@ -993,6 +1158,11 @@ async def _warmup_audio_on_startup() -> None:
             name="audio-warmup",
             daemon=True,
         ).start()
+
+
+@app.on_event("shutdown")
+async def _close_shared_model_clients() -> None:
+    await close_shared_deepseek_clients()
 
 
 if __name__ == "__main__":

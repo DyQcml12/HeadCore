@@ -23,6 +23,18 @@ class CameraSessionStatus(StrEnum):
     STOPPED = "stopped"
 
 
+class CameraSessionMode(StrEnum):
+    REAL = "real"
+    DEMO = "demo"
+
+
+class CameraDemoScenario(StrEnum):
+    DESK_WORK = "desk_work"
+    DESK_SETUP = "desk_setup"
+    STREET_VEHICLE = "street_vehicle"
+    PERSON_PRESENT = "person_present"
+
+
 class CameraContract(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, use_enum_values=True)
 
@@ -30,11 +42,15 @@ class CameraContract(BaseModel):
 class CameraSessionStartRequest(CameraContract):
     consent_granted: bool
     camera_slot: int = Field(default=0, ge=0, le=15)
+    mode: CameraSessionMode = CameraSessionMode.REAL
+    demo_scenario: CameraDemoScenario | None = None
 
     @model_validator(mode="after")
     def require_explicit_consent(self) -> CameraSessionStartRequest:
         if not self.consent_granted:
             raise ValueError("camera consent must be explicitly granted")
+        if self.mode == CameraSessionMode.REAL and self.demo_scenario is not None:
+            raise ValueError("real camera sessions cannot select a demo scenario")
         return self
 
 
@@ -42,6 +58,8 @@ class CameraSession(CameraContract):
     session_id: str = Field(min_length=20, max_length=80)
     camera_slot: int = Field(ge=0, le=15)
     status: CameraSessionStatus
+    mode: CameraSessionMode = CameraSessionMode.REAL
+    demo_scenario: CameraDemoScenario | None = None
     created_at: datetime
     expires_at: datetime
 

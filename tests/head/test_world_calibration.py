@@ -96,11 +96,16 @@ def test_news_observation_becomes_allowlisted_facts():
                 observation(
                     WorldSourceCapability.NEWS,
                     {
-                        "title": "联合国发布新报告",
-                        "published_at": "2026-07-22T10:00:00+00:00",
-                        "source_name": "news.un.org",
-                        "url": "https://news.un.org/x",
-                        "body_text": "完整正文不应进入事实",
+                        "topic": "world",
+                        "items": [
+                            {
+                                "title": "联合国发布新报告",
+                                "published_at": "2026-07-22T10:00:00+00:00",
+                                "source_name": "news.un.org",
+                                "url": "https://news.un.org/x",
+                                "body_text": "完整正文不应进入事实",
+                            }
+                        ],
                     },
                 ),
             ),
@@ -109,7 +114,7 @@ def test_news_observation_becomes_allowlisted_facts():
 
     assert facts
     assert all(item.key.startswith("news.") for item in facts)
-    assert all(any(item.key.endswith(suffix) for suffix in (".title", ".published_at", ".source_name", ".url")) for item in facts)
+    assert all(any(item.key.endswith(suffix) for suffix in (".title", ".published_at", ".url")) for item in facts)
     assert all("正文" not in item.value for item in facts)
     assert all(item.source_kind == CognitiveFactSourceKind.WORLD_EVIDENCE for item in facts)
 
@@ -149,15 +154,16 @@ def test_route_observation_uses_location_key():
                         "origin_id": "440100",
                         "destination_id": "440300",
                         "mode": "driving",
-                        "duration_seconds": 3600,
-                        "distance_meters": 120000,
+                        "routes": [
+                            {"option": "1", "duration_seconds": 3600, "distance_m": 120000},
+                        ],
                     },
                 ),
             ),
         ),
     )
 
-    assert any(item.key == "route.440100.440300.duration_seconds" for item in facts)
+    assert any(item.key == "route.440100.440300.1.duration_seconds" for item in facts)
 
 def test_calibration_dedupes_and_supersedes_same_source():
     existing = (fact("f1", "weather.440100.temperature_c", "28"),)

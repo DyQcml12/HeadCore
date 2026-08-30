@@ -19,6 +19,15 @@ _EMOTION_ENGINES: dict[str, Emotion2VecEngine] = {}
 _ROUTED_ENGINES: dict[str, RoutedFileAsrEngine] = {}
 
 
+class AudioUploadValidationError(ValueError):
+    """Raised when an uploaded audio file violates the local upload policy."""
+
+    def __init__(self, detail: str, *, status_code: int) -> None:
+        super().__init__(detail)
+        self.detail = detail
+        self.status_code = status_code
+
+
 def parse_asr_file_presets(raw_value: str) -> list[str]:
     presets = [item.strip() for item in raw_value.split(",") if item.strip()]
     return presets or ["sensevoice-small"]
@@ -74,15 +83,84 @@ def get_routed_engine_for_preset(preset: str, settings) -> RoutedFileAsrEngine:
     return _ROUTED_ENGINES[preset]
 
 
-async def save_upload_to_temp(upload: UploadFile) -> Path:
-    suffix = Path(upload.filename or "audio.wav").suffix or ".wav"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        while True:
-            chunk = await upload.read(1024 * 1024)
-            if not chunk:
-                break
-            tmp.write(chunk)
-        return Path(tmp.name)
+def _csv_values(raw_value: str) -> set[str]:
+    return {item.strip().lower() for item in raw_value.split(",") if item.strip()}
+
+
+async def save_upload_to_temp(
+    upload: UploadFile,
+    *,
+    max_bytes: int | None = None,
+    allowed_extensions: str | None = None,
+    allowed_content_types: str | None = None,
+) -> Path:
+    settings = load_settings()
+    max_bytes = settings.audio_upload_max_bytes if max_bytes is None else max_bytes
+    allowed_extensions = (
+        settings.audio_upload_allowed_extensions
+        if allowed_extensions is None
+        else allowed_extensions
+    )
+    allowed_content_types = (
+        settings.audio_upload_allowed_content_types
+        if allowed_content_types is None
+        else allowed_content_types
+    )
+
+    filename = upload.filename or "audio.wav"
+    suffix = Path(filename).suffix.lower()
+    allowed_suffixes = {
+        item if item.startswith(".") else "." + item
+        for item in _csv_values(allowed_extensions)
+    }
+    if allowed_suffixes and suffix not in allowed_suffixes:
+        raise AudioUploadValidationError(
+            "unsupported audio file extension",
+            status_code=415,
+        )
+
+    content_type = (upload.content_type or "").split(";", 1)[0].strip().lower()
+    allowed_types = _csv_values(allowed_content_types)
+    # Some clients send application/octet-stream for a valid audio filename;
+    # extension validation still applies, so an absent/generic type is allowed.
+    if (
+        content_type
+        and content_type not in allowed_types
+        and content_type != "application/octet-stream"
+    ):
+        raise AudioUploadValidationError(
+            "unsupported audio content type",
+            status_code=415,
+        )
+    if max_bytes <= 0:
+        raise AudioUploadValidationError(
+            "audio upload limit is not configured",
+            status_code=500,
+        )
+
+    temp_path: Path | None = None
+    total_bytes = 0
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix or ".wav") as tmp:
+            temp_path = Path(tmp.name)
+            while True:
+                chunk = await upload.read(1024 * 1024)
+                if not chunk:
+                    break
+                total_bytes += len(chunk)
+                if total_bytes > max_bytes:
+                    raise AudioUploadValidationError(
+                        f"audio upload exceeds {max_bytes} bytes",
+                        status_code=413,
+                    )
+                tmp.write(chunk)
+        if total_bytes == 0:
+            raise AudioUploadValidationError("audio upload is empty", status_code=400)
+        return temp_path
+    except Exception:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
+        raise
 
 
 def warmup_audio_pipeline() -> None:
