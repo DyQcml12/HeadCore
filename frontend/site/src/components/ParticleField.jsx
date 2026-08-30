@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
 
-const PARTICLE_COUNT = 500;
 const POINTER_PARALLAX = 0.02;
 
 export default function ParticleField({ reduceMotion = false }) {
@@ -16,6 +15,10 @@ export default function ParticleField({ reduceMotion = false }) {
     import("three").then((THREE) => {
       if (disposed) return;
 
+      const coarsePointer = window.matchMedia("(pointer: coarse)").matches;
+      const lowPower = coarsePointer || (navigator.hardwareConcurrency || 8) <= 4;
+      const particleCount = reduceMotion ? 180 : lowPower ? 280 : 500;
+
       let renderer;
       try {
         renderer = new THREE.WebGLRenderer({
@@ -30,7 +33,7 @@ export default function ParticleField({ reduceMotion = false }) {
 
       host.dataset.webgl = "ready";
       renderer.setClearColor(0x000000, 0);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, lowPower ? 1.25 : 1.75));
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       renderer.domElement.setAttribute("role", "presentation");
       host.appendChild(renderer.domElement);
@@ -40,10 +43,10 @@ export default function ParticleField({ reduceMotion = false }) {
       camera.position.z = 14;
 
       const geometry = new THREE.BufferGeometry();
-      const positions = new Float32Array(PARTICLE_COUNT * 3);
-      const colors = new Float32Array(PARTICLE_COUNT * 3);
+      const positions = new Float32Array(particleCount * 3);
+      const colors = new Float32Array(particleCount * 3);
 
-      for (let index = 0; index < PARTICLE_COUNT; index += 1) {
+      for (let index = 0; index < particleCount; index += 1) {
         const stride = index * 3;
         const radius = 4 + Math.random() * 10;
         const angle = Math.random() * Math.PI * 2;
