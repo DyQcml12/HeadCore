@@ -5,7 +5,7 @@ import time
 from collections.abc import AsyncIterator
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Cookie, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -13,6 +13,7 @@ from app.channels.adapters import CoreApiEventAdapter
 from app.core.config import load_settings
 from app.head.runtime import HeadRuntime, HeadRuntimeContext
 from app.services.chat_service import ChatService
+from app.services.model_client import get_shared_deepseek_client
 from app.storage.v2_runtime import (
     build_database_v2_chat_repository,
     database_v2_chat_user_id,
@@ -64,10 +65,19 @@ async def list_models() -> dict[str, object]:
 
 
 @router.post("/v1/chat/completions")
-async def create_chat_completion(request: OpenAIChatCompletionRequest):
+async def create_chat_completion(
+    request: OpenAIChatCompletionRequest,
+    hutao_session: str | None = Cookie(default=None, alias="hutao_session"),
+    csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+    authorization: str | None = Header(default=None),
+):
     user_input = extract_latest_user_message(request.messages)
-    session_id = request.session_id or build_compat_session_id(request)
-    user_id = request.user_id or request.user or "openai-compat-user"
+    user_id, session_id = await resolve_openai_identity(
+        request,
+        hutao_session=hutao_session,
+        csrf_token=csrf_token,
+        authorization=authorization,
+    )
 
     v2_response = await try_handle_database_v2_platform_message(
         settings=settings,
@@ -106,9 +116,13 @@ async def create_chat_completion(request: OpenAIChatCompletionRequest):
         else user_id
     )
     runtime = HeadRuntime(
-        ChatService(settings, repository=build_database_v2_chat_repository(settings))
+        ChatService(
+            settings,
+            client=get_shared_deepseek_client(settings),
+            repository=build_database_v2_chat_repository(settings),
+        )
         if use_v2_chat_storage
-        else ChatService(settings)
+        else ChatService(settings, client=get_shared_deepseek_client(settings))
     )
     event = build_openai_channel_event(request, user_input, session_id, user_id)
     context = HeadRuntimeContext(subject_id=chat_user_id, session_id=session_id)
@@ -148,9 +162,23 @@ def normalize_message_content(content: str | list[dict[str, Any]] | None) -> str
     parts: list[str] = []
     for item in content:
         if not isinstance(item, dict):
-            continue
-        if item.get("type") == "text" and isinstance(item.get("text"), str):
+            raise HTTPException(status_code=400, detail="message content part must be an object")
+        part_type = item.get("type")
+        if part_type == "text" and isinstance(item.get("text"), str):
             parts.append(str(item["text"]).strip())
+            continue
+        if part_type in {"image_url", "input_image", "audio_url", "input_audio"}:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"{part_type} content is not supported by the OpenAI-compatible endpoint; "
+                    "use the local visual workbench or audio upload endpoints"
+                ),
+            )
+        raise HTTPException(
+            status_code=400,
+            detail="unsupported message content part; only text content is supported",
+        )
     return "\n".join(part for part in parts if part).strip()
 
 
@@ -160,6 +188,52 @@ def build_compat_session_id(request: OpenAIChatCompletionRequest) -> str:
     if request.user:
         return f"openai-compat-{request.user}"
     return "openai-compat-default"
+
+
+async def resolve_openai_identity(
+    request: OpenAIChatCompletionRequest,
+    *,
+    hutao_session: str | None,
+    csrf_token: str | None,
+    authorization: str | None,
+) -> tuple[str, str]:
+    """Resolve request identity without trusting body fields in authenticated mode.
+
+    The compatibility endpoint remains usable for local development while public
+    web authentication is disabled. Once that switch is enabled, it follows the
+    same session/CSRF or Bearer identity boundary as the web and mini-program
+    APIs, and platform identity fields are rejected rather than user-controlled.
+    """
+    supplied_user_id = request.user_id or request.user or "openai-compat-user"
+    supplied_session_id = request.session_id or build_compat_session_id(request)
+
+    # Import at call time to avoid the router/main module import cycle. The app
+    # has completed authentication setup before FastAPI can invoke this route.
+    from app.main import _authenticated_identity, public_web_auth_configured
+
+    if not public_web_auth_configured:
+        return supplied_user_id, supplied_session_id
+    if any(
+        value is not None
+        for value in (
+            request.platform,
+            request.platform_user_id,
+            request.platform_group_id,
+        )
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="authenticated OpenAI requests must not include platform identity fields",
+        )
+    identity = await _authenticated_identity(
+        user_id=supplied_user_id,
+        session_id=supplied_session_id,
+        session_token=hutao_session,
+        csrf_token=csrf_token,
+        require_csrf=True,
+        authorization=authorization,
+    )
+    return identity.profile_id, identity.session_id
 
 
 def build_chat_completion_response(

@@ -24,6 +24,7 @@ class WorldSourceCapability(StrEnum):
     MAP_ROUTE = "map_route"
     MAP_PLACE = "map_place"
     VISION_EVENT = "vision_event"
+    WEB_SEARCH = "web_search"
 
 
 class DataSensitivity(StrEnum):

@@ -55,4 +55,4 @@ def test_instruction_mentions_strict_format_and_no_fabrication() -> None:
 
 def test_denial_reply_never_contains_raw_marker() -> None:
     assert "USE_WORLD_TOOL" not in TOOL_DENIED_REPLY
-    assert TOOL_CAPABILITIES == frozenset({"weather", "news", "policy"})
+    assert TOOL_CAPABILITIES == frozenset({"weather", "news", "policy", "search"})

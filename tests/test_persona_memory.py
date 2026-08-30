@@ -590,6 +590,32 @@ def test_persona_prompt_builder_injects_turn_taking_limits() -> None:
     assert "本轮节奏上限" in prompt.user_prompt
 
 
+def test_persona_prompt_does_not_hard_cap_normal_emotional_turns() -> None:
+    classification = classify_scene("今天有点烦，但我想慢慢说说。")
+    prompt = build_persona_prompt(
+        user_input="今天有点烦，但我想慢慢说说。",
+        classification=classification,
+        memory_policy=build_memory_policy(classification),
+    )
+
+    assert prompt.mode.value == "emotional"
+    assert "按内容自然决定长度" in prompt.system_prompt
+    assert "本轮上限 35 字" not in prompt.system_prompt
+    assert "不要为了凑字数硬截断" in prompt.system_prompt
+
+
+def test_persona_prompt_keeps_explicit_short_request_strict() -> None:
+    classification = classify_scene("少说点，先告诉我结论。")
+    prompt = build_persona_prompt(
+        user_input="少说点，先告诉我结论。",
+        classification=classification,
+        memory_policy=build_memory_policy(classification),
+    )
+
+    assert "本轮上限 28 字" in prompt.system_prompt
+    assert "本轮节奏上限：28 字" in prompt.user_prompt
+
+
 def test_tone_policy_distinguishes_normal_friend_and_admin_partner_boundaries() -> None:
     friend = build_tone_policy("stranger")
     owner = build_tone_policy("owner")

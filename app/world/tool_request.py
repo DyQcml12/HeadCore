@@ -7,7 +7,10 @@ from dataclasses import dataclass
 TOOL_CAPABILITY_WEATHER = "weather"
 TOOL_CAPABILITY_NEWS = "news"
 TOOL_CAPABILITY_POLICY = "policy"
-TOOL_CAPABILITIES = frozenset({TOOL_CAPABILITY_WEATHER, TOOL_CAPABILITY_NEWS, TOOL_CAPABILITY_POLICY})
+TOOL_CAPABILITY_SEARCH = "search"
+TOOL_CAPABILITIES = frozenset(
+    {TOOL_CAPABILITY_WEATHER, TOOL_CAPABILITY_NEWS, TOOL_CAPABILITY_POLICY, TOOL_CAPABILITY_SEARCH}
+)
 
 _CAPABILITY_ALIASES = {
     "天气": TOOL_CAPABILITY_WEATHER,
@@ -16,9 +19,11 @@ _CAPABILITY_ALIASES = {
     "news": TOOL_CAPABILITY_NEWS,
     "政策": TOOL_CAPABILITY_POLICY,
     "policy": TOOL_CAPABILITY_POLICY,
+    "搜索": TOOL_CAPABILITY_SEARCH,
+    "search": TOOL_CAPABILITY_SEARCH,
 }
 _MARKER_PATTERN = re.compile(
-    r"\[USE_WORLD_TOOL:(天气|新闻|政策|weather|news|policy):([^\]]{1,120})\]"
+    r"\[USE_WORLD_TOOL:(天气|新闻|政策|搜索|weather|news|policy|search):([^\]]{1,120})\]"
 )
 
 TOOL_DENIED_REPLY = "世界工具现在没有可用证据，我先按已有信息回答，不编造实时数据。"
@@ -46,7 +51,9 @@ class WorldToolRequest:
             return f"天气 {self.query}"
         if self.capability == TOOL_CAPABILITY_NEWS:
             return f"新闻 {self.query}"
-        return f"政策 {self.query}"
+        if self.capability == TOOL_CAPABILITY_POLICY:
+            return f"政策 {self.query}"
+        return f"搜索 {self.query}"
 
 
 def parse_tool_request(text: str) -> WorldToolRequest | None:
@@ -69,8 +76,9 @@ def parse_tool_request(text: str) -> WorldToolRequest | None:
 def render_tool_protocol_instruction() -> str:
     """System prompt instruction enabling the single-step tool loop."""
     return (
-        "[工具协议] 若回答需要实时天气、新闻或政策信息，而系统上下文没有对应证据："
+        "[工具协议] 若回答需要实时天气、新闻、政策或通用搜索信息，而系统上下文没有对应证据："
         "只输出一个工具标记并停止，格式严格为 "
         "[USE_WORLD_TOOL:天气:<城市或区划>] 或 [USE_WORLD_TOOL:新闻:<主题>] "
-        "或 [USE_WORLD_TOOL:政策:<主题>]；不要编造数值。工具结果会作为证据追加后重新生成。"
+        "或 [USE_WORLD_TOOL:政策:<主题>] 或 [USE_WORLD_TOOL:搜索:<主题>]；不要编造数值。"
+        "工具结果会作为证据追加后重新生成。"
     )

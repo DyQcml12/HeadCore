@@ -5,10 +5,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.persona.profile_registry import DEFAULT_PERSONA_PROFILE_ID, resolve_persona_profile
+from app.desktop.secret_store import read_secret
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(
+    os.environ.get("HUTAO_INSTALL_ROOT") or Path(__file__).resolve().parents[2]
+).resolve()
 WORKSPACE_ROOT = PROJECT_ROOT.parent
+LOCAL_APP_ROOT = PROJECT_ROOT / "data" / "local_app"
 
 
 @dataclass(frozen=True)
@@ -51,6 +55,13 @@ class Settings:
     persona_display_name: str
     persona_style: str
     hutao_voice_profile: str
+    audio_upload_max_bytes: int = 25 * 1024 * 1024
+    audio_upload_allowed_extensions: str = ".wav,.mp3,.m4a,.flac,.ogg,.webm"
+    audio_upload_allowed_content_types: str = (
+        "audio/wav,audio/x-wav,audio/mpeg,audio/mp3,audio/mp4,audio/x-m4a,"
+        "audio/flac,audio/ogg,audio/webm,audio/wave,audio/vnd.wave,video/webm,"
+        "audio/x-matroska,application/ogg,application/octet-stream"
+    )
     voice_chat_reply_timeout_seconds: float = 25.0
     semantic_memory_enabled: bool = False
     semantic_memory_qdrant_url: str = ""
@@ -96,7 +107,6 @@ class Settings:
     qweather_api_base_url: str = "https://devapi.qweather.com"
     qweather_allowed_hosts: str = "devapi.qweather.com"
     qweather_source_legal_approved: bool = False
-    qweather_weather_cache_ttl_seconds: int = 900
     world_domestic_news_api_key: str = ""
     world_domestic_news_api_base_url: str = ""
     world_international_news_api_key: str = ""
@@ -104,8 +114,14 @@ class Settings:
     world_official_source_manifest: str = "./data/world/sources.json"
     world_source_enabled_ids: str = ""
     world_source_legal_approved_ids: str = ""
+    web_search_enabled: bool = False
+    web_search_provider: str = "tavily"
+    web_search_api_key: str = ""
+    web_search_max_results: int = 6
+    web_search_cache_ttl_seconds: int = 300
     camera_perception_enabled: bool = False
     camera_local_capture_enabled: bool = False
+    camera_demo_enabled: bool = False
     camera_session_max_seconds: int = 300
     camera_observation_ttl_seconds: int = 15
     camera_raw_frame_retention_seconds: int = 0
@@ -120,6 +136,10 @@ class Settings:
     visual_workbench_admin_secret: str = ""
     visual_workbench_session_lifetime_seconds: int = 1800
     public_web_auth_enabled: bool = False
+    # Comma-separated emails allowed to enter the web control plane.
+    # An empty allowlist intentionally denies every web account (fail closed).
+    control_admin_emails: str = ""
+    control_local_only: bool = True
     session_cookie_secure: bool = False
     public_web_session_lifetime_seconds: int = 604800
     email_delivery_enabled: bool = False
@@ -136,6 +156,7 @@ class Settings:
     public_web_tts_reply_ttl_seconds: int = 300
     public_web_tts_min_interval_seconds: int = 8
     public_web_tts_max_reply_chars: int = 800
+    public_web_tts_total_budget_seconds: int = 120
 
     @property
     def chat_completions_url(self) -> str:
@@ -172,6 +193,7 @@ def load_env_values() -> dict[str, str]:
     for path in [
         WORKSPACE_ROOT / "HutaoPersonaLab" / ".env",
         PROJECT_ROOT / ".env",
+        LOCAL_APP_ROOT / "runtime.env",
     ]:
         values.update(read_env_file(path))
     return values
@@ -213,8 +235,14 @@ def load_settings() -> Settings:
         model_provider=get_setting("MODEL_PROVIDER", env_values, "deepseek"),
         model_name=get_setting("MODEL_NAME", env_values, "deepseek-v4-pro"),
         model_base_url=get_setting("MODEL_BASE_URL", env_values, "https://api.deepseek.com"),
-        deepseek_api_key=get_setting("DEEPSEEK_API_KEY", env_values),
-        request_timeout_seconds=float(get_setting("API_TIMEOUT_SECONDS", env_values, "90")),
+        deepseek_api_key=(
+            get_setting("DEEPSEEK_API_KEY", env_values)
+            or read_secret(LOCAL_APP_ROOT / "secrets.dpapi", "text")
+        ),
+        request_timeout_seconds=min(
+            300.0,
+            max(1.0, float(get_setting("API_TIMEOUT_SECONDS", env_values, "90"))),
+        ),
         temperature=float(get_setting("API_TEMPERATURE", env_values, "0.8")),
         mysql_host=get_setting("MYSQL_HOST", env_values, "127.0.0.1"),
         mysql_port=int(get_setting("MYSQL_PORT", env_values, "3306")),
@@ -256,6 +284,21 @@ def load_settings() -> Settings:
         persona_display_name=profile_resolution.profile.identity_name,
         persona_style=profile_resolution.profile.default_style,
         hutao_voice_profile=get_setting("HUTAO_VOICE_PROFILE", env_values, "hutao_e15"),
+        audio_upload_max_bytes=int(
+            get_setting("AUDIO_UPLOAD_MAX_BYTES", env_values, str(25 * 1024 * 1024))
+        ),
+        audio_upload_allowed_extensions=get_setting(
+            "AUDIO_UPLOAD_ALLOWED_EXTENSIONS",
+            env_values,
+            ".wav,.mp3,.m4a,.flac,.ogg,.webm",
+        ),
+        audio_upload_allowed_content_types=get_setting(
+            "AUDIO_UPLOAD_ALLOWED_CONTENT_TYPES",
+            env_values,
+            "audio/wav,audio/x-wav,audio/mpeg,audio/mp3,audio/mp4,audio/x-m4a,"
+            "audio/flac,audio/ogg,audio/webm,audio/wave,audio/vnd.wave,video/webm,"
+            "audio/x-matroska,application/ogg,application/octet-stream",
+        ),
         voice_chat_reply_timeout_seconds=float(
             get_setting("VOICE_CHAT_REPLY_TIMEOUT_SECONDS", env_values, "25")
         ),
@@ -387,9 +430,6 @@ def load_settings() -> Settings:
         qweather_source_legal_approved=get_setting(
             "QWEATHER_SOURCE_LEGAL_APPROVED", env_values, "false"
         ).lower() in {"1", "true", "yes", "on"},
-        qweather_weather_cache_ttl_seconds=int(
-            get_setting("QWEATHER_WEATHER_CACHE_TTL_SECONDS", env_values, "900")
-        ),
         world_domestic_news_api_key=get_setting(
             "WORLD_DOMESTIC_NEWS_API_KEY", env_values
         ),
@@ -413,11 +453,23 @@ def load_settings() -> Settings:
         world_source_legal_approved_ids=get_setting(
             "WORLD_SOURCE_LEGAL_APPROVED_IDS", env_values
         ),
+        web_search_enabled=get_setting(
+            "WEB_SEARCH_ENABLED", env_values, "false"
+        ).lower() in {"1", "true", "yes", "on"},
+        web_search_provider=get_setting("WEB_SEARCH_PROVIDER", env_values, "tavily"),
+        web_search_api_key=get_setting("WEB_SEARCH_API_KEY", env_values),
+        web_search_max_results=int(get_setting("WEB_SEARCH_MAX_RESULTS", env_values, "6")),
+        web_search_cache_ttl_seconds=int(
+            get_setting("WEB_SEARCH_CACHE_TTL_SECONDS", env_values, "300")
+        ),
         camera_perception_enabled=get_setting(
             "CAMERA_PERCEPTION_ENABLED", env_values, "false"
         ).lower() in {"1", "true", "yes", "on"},
         camera_local_capture_enabled=get_setting(
             "CAMERA_LOCAL_CAPTURE_ENABLED", env_values, "false"
+        ).lower() in {"1", "true", "yes", "on"},
+        camera_demo_enabled=get_setting(
+            "CAMERA_DEMO_ENABLED", env_values, "false"
         ).lower() in {"1", "true", "yes", "on"},
         camera_session_max_seconds=int(
             get_setting("CAMERA_SESSION_MAX_SECONDS", env_values, "300")
@@ -457,6 +509,10 @@ def load_settings() -> Settings:
         public_web_auth_enabled=get_setting(
             "PUBLIC_WEB_AUTH_ENABLED", env_values, "false"
         ).lower() in {"1", "true", "yes", "on"},
+        control_admin_emails=get_setting("CONTROL_ADMIN_EMAILS", env_values),
+        control_local_only=get_setting(
+            "CONTROL_LOCAL_ONLY", env_values, "true"
+        ).lower() in {"1", "true", "yes", "on"},
         session_cookie_secure=get_setting(
             "SESSION_COOKIE_SECURE", env_values, "false"
         ).lower() in {"1", "true", "yes", "on"},
@@ -491,5 +547,8 @@ def load_settings() -> Settings:
         ),
         public_web_tts_max_reply_chars=int(
             get_setting("PUBLIC_WEB_TTS_MAX_REPLY_CHARS", env_values, "800")
+        ),
+        public_web_tts_total_budget_seconds=int(
+            get_setting("PUBLIC_WEB_TTS_TOTAL_BUDGET_SECONDS", env_values, "120")
         ),
     )

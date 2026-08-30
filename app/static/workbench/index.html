@@ -6,15 +6,15 @@
     <meta name="robots" content="noindex, nofollow" />
     <title>胡桃视觉工作台</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="/ui/theme.css" />
+    <link rel="stylesheet" href="/ui/liquid-theme.css" />
     <link rel="stylesheet" href="/workbench/style.css" />
   </head>
   <body>
     <div class="workbench-shell">
       <header class="workbench-header">
-        <a class="workbench-brand" href="/desk" aria-label="返回胡桃对话">
-          <span class="brand-mark" aria-hidden="true">H</span>
-          <span><strong>胡桃</strong><small>VISUAL WORKBENCH</small></span>
+        <a class="workbench-brand" href="/desk" aria-label="返回 HutaoChatCore 对话">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span><strong>HutaoChatCore</strong><small>认知角色引擎 · VISUAL WORKBENCH</small></span>
         </a>
         <div class="header-status" id="headerStatus" aria-live="polite">访问受限</div>
         <button class="text-button" id="logoutButton" type="button" hidden>退出工作台</button>
@@ -50,10 +50,14 @@
               <div class="panel-title"><p class="eyebrow">RUNTIME</p><h2 id="capabilityTitle">感知边界</h2></div>
               <dl class="metric-list">
                 <div><dt>本地采集</dt><dd id="cameraAvailability">读取中</dd></div>
+                <div><dt>本机帧分析</dt><dd id="cameraBackend">读取中</dd></div>
+                <div><dt>识别模型</dt><dd id="visionLabeling">读取中</dd></div>
                 <div><dt>单次时限</dt><dd id="cameraDuration">读取中</dd></div>
                 <div><dt>原始画面</dt><dd id="frameRetention">读取中</dd></div>
                 <div><dt>身份识别</dt><dd id="faceIdentification">读取中</dd></div>
+                <div><dt>本地演示</dt><dd id="demoAvailability">读取中</dd></div>
               </dl>
+              <p class="capability-diagnostics" id="visionDiagnostics" role="status" aria-live="polite">正在读取视觉依赖诊断</p>
             </section>
 
             <section class="tool-panel session-panel" aria-labelledby="sessionTitle">
@@ -68,6 +72,20 @@
                 <p class="form-error" id="sessionError" role="alert" hidden></p>
                 <button class="primary-button" id="createSessionButton" type="submit">创建受限会话</button>
               </form>
+              <section class="demo-session" aria-labelledby="demoSessionTitle">
+                <div class="panel-title"><p class="eyebrow">NO CAMERA REQUIRED</p><h3 id="demoSessionTitle">本地视觉演示</h3></div>
+                <form id="demoSessionForm" class="session-form">
+                  <label for="demoScenario">演示场景</label>
+                  <select id="demoScenario" name="scenario">
+                    <option value="desk_work">桌面工作</option>
+                    <option value="desk_setup">桌面物品变化</option>
+                    <option value="street_vehicle">街道车辆</option>
+                    <option value="person_present">室内人员</option>
+                  </select>
+                  <button class="secondary-button" id="startDemoButton" type="submit">启动结构化演示</button>
+                </form>
+                <p class="demo-note">演示只生成白名单标签，结果会经过同一套时序确认和场景状态规则。</p>
+              </section>
             </section>
 
             <section class="tool-panel active-panel" aria-labelledby="activeTitle">
@@ -80,6 +98,45 @@
                 <div><dt>会话编号</dt><dd id="sessionIdValue"></dd></div>
                 <div><dt>到期时间</dt><dd id="sessionExpiryValue"></dd></div>
               </dl>
+              <section class="local-preview" id="localPreviewPanel" data-state="idle" aria-labelledby="localPreviewTitle">
+                <div class="preview-heading">
+                  <div>
+                  <p class="eyebrow">LOCAL FRAME ANALYSIS</p>
+                  <h3 id="localPreviewTitle">本地摄像头与分析</h3>
+                  </div>
+                  <span class="preview-badge" id="previewBadge">等待采集</span>
+                </div>
+                <div class="analysis-strip" aria-live="polite">
+                  <div><span>分析状态</span><strong id="analysisState">等待采集</strong></div>
+                  <div><span>已分析帧</span><strong id="frameCount">0</strong></div>
+                  <div><span>已确认观察</span><strong id="observationCount">0</strong></div>
+                  <div><span>最近分析</span><strong id="analysisLastFrame">--</strong></div>
+                </div>
+                <section class="recognition-result" id="recognitionResult" aria-labelledby="recognitionTitle">
+                  <div class="result-heading">
+                    <div>
+                      <p class="eyebrow">STRUCTURED EVIDENCE</p>
+                      <h4 id="recognitionTitle">实时识别结果</h4>
+                    </div>
+                    <span class="result-status" id="recognitionStatus">等待确认</span>
+                  </div>
+                  <p class="visual-summary" id="visualSummary">等待稳定视觉结果</p>
+                  <div class="label-groups">
+                    <div class="label-group"><span>场景</span><div class="label-chips" id="sceneLabels"><em>等待稳定结果</em></div></div>
+                    <div class="label-group"><span>目标</span><div class="label-chips" id="objectLabels"><em>等待稳定结果</em></div></div>
+                    <div class="label-group"><span>姿态</span><div class="label-chips" id="poseLabels"><em>等待稳定结果</em></div></div>
+                    <div class="label-group"><span>动作</span><div class="label-chips" id="gestureLabels"><em>等待稳定结果</em></div></div>
+                    <div class="label-group"><span>视觉提示</span><div class="label-chips" id="facialLabels"><em>仅显示直接视觉提示</em></div></div>
+                    <div class="label-group"><span>变化</span><div class="label-chips" id="changeLabels"><em>等待下一次确认</em></div></div>
+                  </div>
+                  <p class="observation-updated" id="observationUpdated">时序确认达到要求后显示结果</p>
+                </section>
+                <div class="preview-frame">
+                  <video id="localPreview" autoplay playsinline muted hidden aria-label="本地摄像头预览"></video>
+                  <p class="preview-status" id="previewStatus" role="status" aria-live="polite">启动采集后显示本机摄像头画面</p>
+                </div>
+                <p class="preview-privacy">画面只发送到 127.0.0.1 分析，单帧处理后立即释放，不上传或保存</p>
+              </section>
               <div class="capture-controls" id="captureControls" hidden>
                 <div class="capture-state" id="captureState" data-state="idle">
                   <span aria-hidden="true"></span><span id="captureStateText">本地采集未启动</span>

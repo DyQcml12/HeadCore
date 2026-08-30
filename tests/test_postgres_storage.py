@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import replace
 from pathlib import Path
 import subprocess
@@ -9,6 +10,7 @@ from fastapi import FastAPI
 
 from app.core.config import load_settings
 from app.storage.repository_factory import create_chat_repository
+from app.storage.postgres_repository import _ThreadedPostgresConnection
 
 
 def configured_postgres_settings(monkeypatch):
@@ -111,3 +113,54 @@ def test_postgresql_migration_runner_dry_run_executes_from_the_project_root() ->
 
     assert completed.returncode == 0, completed.stderr
     assert "postgres.001_web_core" in completed.stdout
+
+
+def test_threaded_postgres_adapter_preserves_async_repository_contract() -> None:
+    class FakeCursor:
+        rowcount = 1
+
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, tuple[object, ...]]] = []
+
+        def execute(self, sql: str, params: tuple[object, ...]) -> None:
+            self.calls.append((sql, params))
+
+        def fetchone(self) -> dict[str, str]:
+            return {"id": "one"}
+
+        def fetchall(self) -> list[dict[str, str]]:
+            return [{"id": "one"}, {"id": "two"}]
+
+        def close(self) -> None:
+            return None
+
+    class FakeConnection:
+        def __init__(self) -> None:
+            self.cursor_value = FakeCursor()
+            self.committed = False
+            self.closed = False
+
+        def cursor(self) -> FakeCursor:
+            return self.cursor_value
+
+        def commit(self) -> None:
+            self.committed = True
+
+        def close(self) -> None:
+            self.closed = True
+
+    async def exercise() -> None:
+        connection = FakeConnection()
+        adapter = _ThreadedPostgresConnection(connection)
+        cursor = adapter.cursor()
+        await cursor.execute("SELECT 1", ())
+        assert cursor.rowcount == 1
+        assert await cursor.fetchone() == {"id": "one"}
+        assert await cursor.fetchall() == [{"id": "one"}, {"id": "two"}]
+        await adapter.commit()
+        await cursor.close()
+        await adapter.close()
+        assert connection.committed is True
+        assert connection.closed is True
+
+    asyncio.run(exercise())

@@ -37,6 +37,17 @@ async def load_memory_context(
         memory_types=READABLE_MEMORY_TYPES,
         limit=8,
     )
+    return build_memory_context(records, policy=policy)
+
+
+def build_memory_context(
+    records: list[MemoryRecord],
+    *,
+    policy: MemoryPolicy,
+) -> str:
+    """Render already loaded memories without issuing another repository query."""
+    if not policy.allow_memory_read:
+        return ""
     active_records = filter_revoked_memories(records)
     boundary = build_revocation_boundary(records)
     if not active_records and not boundary:

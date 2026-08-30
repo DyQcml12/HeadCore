@@ -1,5 +1,5 @@
-const CACHE_NAME = "desk-shell-v16";
-const SHELL = ["/desk", "/desk/app.js", "/desk/style.css", "/ui/liquid-theme.css", "/desk/manifest.webmanifest"];
+const CACHE_NAME = "desk-shell-v20";
+const SHELL = ["/desk", "/desk/app.js", "/desk/style.css", "/ui/liquid-theme.css", "/desk/manifest.webmanifest", "/desk/icon.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));

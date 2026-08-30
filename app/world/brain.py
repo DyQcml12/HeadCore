@@ -22,6 +22,7 @@ class WorldToolIntent(StrEnum):
     NEWS_DIGEST = "news_digest"
     POLICY_UPDATES = "policy_updates"
     TRAVEL_COMPARE = "travel_compare"
+    WEB_SEARCH = "web_search"
 
 
 class WorldToolAccessMode(StrEnum):
@@ -97,6 +98,13 @@ class WorldRuntimeLike(Protocol):
         max_items: int = 30,
     ) -> NewsDigestResult: ...
 
+    async def search(
+        self,
+        query: str,
+        *,
+        limit: int = 6,
+    ): ...  # type: ignore[no-untyped-def]
+
 
 _REQUEST_MARKERS = (
     "查",
@@ -119,11 +127,13 @@ _REQUEST_MARKERS = (
     "驾车",
     "步行",
     "还是",
+    "搜",
 )
 _OPT_OUT_MARKERS = ("不要查", "别查", "不要联网", "别联网", "不用查", "别调用")
 _WEATHER_MARKERS = ("天气", "温度", "多少度", "下雨", "降雨", "穿衣")
 _POLICY_MARKERS = ("政策", "国务院", "法规", "规划", "政府文件")
 _NEWS_MARKERS = ("新闻", "资讯", "热点", "发生了什么")
+_SEARCH_MARKERS = ("搜索", "搜一下", "网搜", "搜")
 _FORECAST_MARKERS = ("明天", "后天", "未来", "预报")
 _TRAVEL_MARKERS = ("怎么去", "路线", "地铁", "公交", "公共交通", "开车", "驾车", "自驾", "步行", "走路")
 
@@ -182,6 +192,12 @@ def decide_world_tools(user_input: str) -> WorldToolDecision:
             "explicit_news_request",
             topic=topic,
             source_ids=sources,
+        )
+    if any(marker in text for marker in _SEARCH_MARKERS):
+        return WorldToolDecision(
+            WorldToolIntent.WEB_SEARCH,
+            "explicit_search_request",
+            topic=_search_query(text),
         )
     return WorldToolDecision(WorldToolIntent.NONE, "unsupported_world_request")
 
@@ -267,18 +283,18 @@ class WorldBrainCoordinator:
                 return WorldContextBuildResult(projection, evidence)
             if decision.intent == WorldToolIntent.WEATHER_FORECAST:
                 result = await self._runtime.weather_forecast(weather_location)
-                return WorldContextBuildResult(
-                    self._assembler.from_weather(result, tool_intent=decision.intent.value)
-                )
+                projection = self._assembler.from_weather(result, tool_intent=decision.intent.value)
+                evidence = (result,) if projection.status == "ready" else ()
+                return WorldContextBuildResult(projection, evidence)
             if decision.intent == WorldToolIntent.POLICY_UPDATES:
                 result = await self._runtime.policy_updates(
                     decision.source_ids[0],
                     topic=decision.topic,
                     limit=8,
                 )
-                return WorldContextBuildResult(
-                    self._assembler.from_policy(result, tool_intent=decision.intent.value)
-                )
+                projection = self._assembler.from_policy(result, tool_intent=decision.intent.value)
+                evidence = (result,) if projection.status == "ready" else ()
+                return WorldContextBuildResult(projection, evidence)
             if decision.intent == WorldToolIntent.NEWS_DIGEST:
                 result = await self._runtime.news_digest(
                     topic=decision.topic,
@@ -289,6 +305,13 @@ class WorldBrainCoordinator:
                 return WorldContextBuildResult(
                     self._assembler.from_news_digest(result, tool_intent=decision.intent.value)
                 )
+            if decision.intent == WorldToolIntent.WEB_SEARCH:
+                result = await self._runtime.search(decision.topic)
+                projection = self._assembler.from_search(result, tool_intent=decision.intent.value)
+                # Search results are realtime and cached in memory only; they are
+                # never returned as persistable evidence, so they never reach the
+                # fact store or the knowledge graph.
+                return WorldContextBuildResult(projection)
             if decision.intent == WorldToolIntent.TRAVEL_COMPARE:
                 origin_result, destination_result = await asyncio.gather(
                     self._runtime.search_places(
@@ -356,18 +379,18 @@ class WorldBrainCoordinator:
                         )
                     except (WorldSourceError, ValueError):
                         weather_result = None
-                return WorldContextBuildResult(
-                    self._assembler.from_travel_plan(
-                        route_results,
-                        origin=origin,
-                        destination=destination,
-                        expected_modes=decision.travel_modes,
-                        time_budget_minutes=decision.time_budget_minutes,
-                        day_offset=decision.day_offset,
-                        weather_result=weather_result,
-                        tool_intent=decision.intent.value,
-                    )
+                projection = self._assembler.from_travel_plan(
+                    route_results,
+                    origin=origin,
+                    destination=destination,
+                    expected_modes=decision.travel_modes,
+                    time_budget_minutes=decision.time_budget_minutes,
+                    day_offset=decision.day_offset,
+                    weather_result=weather_result,
+                    tool_intent=decision.intent.value,
                 )
+                evidence = route_results if weather_result is None else (*route_results, weather_result)
+                return WorldContextBuildResult(projection, evidence)
         except (WorldSourceError, ValueError):
             return WorldContextBuildResult(self._assembler.unavailable(decision.intent.value))
         return WorldContextBuildResult(self._assembler.unavailable(decision.intent.value))
@@ -387,6 +410,24 @@ def _topic_for_text(text: str, *, policy: bool = False) -> str:
         if any(marker in text for marker in markers):
             return topic
     return "政策" if policy else "world"
+
+
+def _search_query(text: str) -> str:
+    cleaned = text
+    for marker in (
+        "帮我搜索一下",
+        "帮我搜一下",
+        "帮我搜索",
+        "搜索一下",
+        "搜索",
+        "搜一下",
+        "网搜",
+        "搜",
+    ):
+        cleaned = cleaned.replace(marker, "")
+    for char in ("，", ",", "。", "！", "!", "？", "?", " ", "请"):
+        cleaned = cleaned.replace(char, "")
+    return cleaned.strip()[:120]
 
 
 def _weather_location_keyword(text: str) -> str:

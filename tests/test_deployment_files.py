@@ -29,12 +29,6 @@ def test_git_ignore_excludes_deployment_secrets_and_runtime_data() -> None:
 
 def test_current_environment_template_excludes_retired_bot_configuration() -> None:
     template = (PROJECT_ROOT / ".env.example").read_text(encoding="utf-8")
-    archive_note = (
-        PROJECT_ROOT / "docs" / "archive" / "RETIRED_QQ_WEIXIN_BOT_CONFIGURATION.md"
-    ).read_text(encoding="utf-8")
 
     for retired_prefix in ("QQ_", "WEIXIN", "HERMES", "NAPCAT", "ONEBOT"):
         assert retired_prefix not in template
-
-    assert "not deployed" in archive_note.lower()
-    assert "QQ/Weixin Bot" in archive_note

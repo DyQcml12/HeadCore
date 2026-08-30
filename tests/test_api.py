@@ -72,6 +72,64 @@ def test_health_reports_runtime_shape() -> None:
     assert "api_key_configured" in body
 
 
+def test_public_capabilities_report_only_connected_tools(monkeypatch) -> None:
+    monkeypatch.setattr(main, "settings", replace(main.settings, world_awareness_enabled=True))
+    monkeypatch.setattr(main, "public_web_tts_configured", False)
+
+    response = asyncio.run(request_app("GET", "/api/v1/capabilities"))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["chat"]["enabled"] is True
+    assert body["memory"]["enabled"] is bool(main.settings.semantic_memory_enabled)
+    assert body["tools"]["world_read"]["enabled"] is True
+    assert body["tools"]["web_search"]["enabled"] is False
+    assert body["tools"]["code_interpreter"]["enabled"] is False
+    assert body["tools"]["computer_control"]["enabled"] is False
+    assert body["vision"]["enabled"] is False
+    assert body["voice"]["enabled"] is False
+
+
+def test_chat_history_returns_only_the_local_owner_messages(monkeypatch, tmp_path: Path) -> None:
+    repository = JsonlChatRepository(tmp_path)
+    asyncio.run(repository.ensure_session(user_id="local-owner", client_session_id="desk-session"))
+    asyncio.run(
+        repository.save_message(
+            session_id="session-record",
+            user_id="local-owner",
+            role="user",
+            content="第一条消息",
+        )
+    )
+    asyncio.run(
+        repository.save_message(
+            session_id="session-record",
+            user_id="other-owner",
+            role="assistant",
+            content="不应返回",
+        )
+    )
+    monkeypatch.setattr(main, "public_web_auth_configured", False)
+    monkeypatch.setattr(main, "_authenticated_profile_repository", lambda: repository)
+
+    response = asyncio.run(
+        request_app(
+            "GET",
+            "/api/v1/chat/history?session_id=session-record&user_id=local-owner",
+        )
+    )
+
+    assert response.status_code == 200
+    assert response.json()["messages"] == [
+        {
+            "id": response.json()["messages"][0]["id"],
+            "role": "user",
+            "content": "第一条消息",
+            "created_at": response.json()["messages"][0]["created_at"],
+        }
+    ]
+
+
 def test_public_web_chat_identity_comes_from_session_not_request_body(monkeypatch) -> None:
     from app.auth.service import StoredSession
     from app.main import _authenticated_web_request
@@ -869,6 +927,75 @@ def test_audio_transcribe_file_api_returns_transcript(monkeypatch) -> None:
     assert body["selected_candidate_id"] == "primary"
 
 
+def test_audio_upload_enforces_size_limit_before_transcription(monkeypatch) -> None:
+    monkeypatch.setattr(
+        main,
+        "settings",
+        replace(main.settings, audio_upload_max_bytes=4),
+    )
+    called = False
+
+    def should_not_transcribe(_audio_path: Path):
+        nonlocal called
+        called = True
+        raise AssertionError("oversized upload reached ASR")
+
+    monkeypatch.setattr(main, "transcribe_audio_file", should_not_transcribe)
+
+    response = asyncio.run(
+        request_app(
+            "POST",
+            "/api/v1/audio/transcribe/file",
+            files={"file": ("sample.wav", b"12345", "audio/wav")},
+        )
+    )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "audio upload exceeds 4 bytes"
+    assert called is False
+
+
+def test_audio_upload_rejects_unsupported_extension() -> None:
+    response = asyncio.run(
+        request_app(
+            "POST",
+            "/api/v1/audio/transcribe/file",
+            files={"file": ("sample.exe", b"MZ", "application/octet-stream")},
+        )
+    )
+
+    assert response.status_code == 415
+    assert response.json()["detail"] == "unsupported audio file extension"
+
+
+def test_audio_transcribe_file_api_removes_temp_upload_after_processing(monkeypatch) -> None:
+    captured: dict[str, Path] = {}
+
+    def fake_transcribe(audio_path: Path) -> dict[str, object]:
+        captured["path"] = audio_path
+        assert audio_path.exists()
+        return {
+            "text": "voice transcript",
+            "provider": "fake-asr",
+            "model": "fake-file-model",
+            "audio_path": str(audio_path),
+            "latency_ms": 1.0,
+        }
+
+    monkeypatch.setattr(main, "transcribe_audio_file", fake_transcribe)
+
+    response = asyncio.run(
+        request_app(
+            "POST",
+            "/api/v1/audio/transcribe/file",
+            files={"file": ("sample.wav", b"RIFF", "audio/wav")},
+        )
+    )
+
+    assert response.status_code == 200
+    assert not captured["path"].exists()
+
+
 def test_audio_chat_prepare_file_api_skips_optional_emotion_analysis(monkeypatch) -> None:
     received: dict[str, object] = {}
 
@@ -1189,6 +1316,60 @@ def test_openai_compat_chat_completion_uses_latest_user_message(monkeypatch, tmp
     assert RecordingChatService.last_call["user_id"] == "wechat-user-1"
 
 
+def test_openai_compat_authenticated_mode_uses_server_identity(monkeypatch, tmp_path: Path) -> None:
+    from app.auth.service import StoredSession
+
+    class FakePublicAuthService:
+        async def require_session(self, *, session_token: str | None, **kwargs: object) -> StoredSession:
+            assert session_token == "valid-session"
+            assert kwargs == {"csrf_token": "csrf-value", "require_csrf": True}
+            return StoredSession(
+                id="server-session",
+                user_id="web-user",
+                profile_id="profile-from-session",
+                token_hash="x" * 64,
+                csrf_secret_hash="y" * 64,
+                expires_at="2026-07-26T12:00:00+00:00",  # type: ignore[arg-type]
+                revoked_at=None,
+            )
+
+    RecordingChatService.last_call = {}
+    monkeypatch.setattr(main, "public_web_auth_configured", True)
+    monkeypatch.setattr(main, "public_web_auth_service", FakePublicAuthService())
+    monkeypatch.setenv("DATABASE_V2_ENABLED", "false")
+    monkeypatch.setenv("STORAGE_BACKEND", "jsonl")
+    monkeypatch.setenv("JSONL_STORAGE_DIR", str(tmp_path / "openai-auth-storage"))
+    monkeypatch.setattr("app.openai_compat.settings", load_settings())
+    monkeypatch.setattr(
+        "app.openai_compat.ChatService",
+        lambda settings, **kwargs: RecordingChatService(
+            settings,
+            client=FakeSuccessClient(),
+            repository=JsonlChatRepository(Path(settings.jsonl_storage_dir)),
+            audit_logger=ModelInvocationAuditLogger(tmp_path / "openai-auth-audit.jsonl"),
+        ),
+    )
+
+    response = asyncio.run(
+        request_app(
+            "POST",
+            "/v1/chat/completions",
+            headers={"Cookie": "hutao_session=valid-session", "X-CSRF-Token": "csrf-value"},
+            json={
+                "model": "hutao-chatcore",
+                "user": "attacker-user",
+                "user_id": "attacker-profile",
+                "session_id": "attacker-session",
+                "messages": [{"role": "user", "content": "authenticated request"}],
+            },
+        )
+    )
+
+    assert response.status_code == 200
+    assert RecordingChatService.last_call["user_id"] == "profile-from-session"
+    assert RecordingChatService.last_call["session_id"] == "server-session"
+
+
 def test_openai_compat_chat_completion_accepts_text_content_parts(monkeypatch, tmp_path: Path) -> None:
     RecordingChatService.last_call = {}
     monkeypatch.setenv("DATABASE_V2_ENABLED", "false")
@@ -1234,6 +1415,30 @@ def test_openai_compat_chat_completion_accepts_text_content_parts(monkeypatch, t
     assert RecordingChatService.last_call["user_id"] == "hermes-user-1"
     assert RecordingChatService.last_call["platform"] == "wechat"
     assert RecordingChatService.last_call["platform_user_id"] == "wx-open-id-1"
+
+
+def test_openai_compat_rejects_unsupported_image_content_instead_of_dropping_it() -> None:
+    response = asyncio.run(
+        request_app(
+            "POST",
+            "/v1/chat/completions",
+            json={
+                "model": "hutao-chatcore",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "请看这张图"},
+                            {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}},
+                        ],
+                    }
+                ],
+            },
+        )
+    )
+
+    assert response.status_code == 400
+    assert "image_url content is not supported" in response.json()["detail"]
 
 
 def test_openai_compat_chat_completion_uses_database_v2_for_wechat_command(monkeypatch) -> None:

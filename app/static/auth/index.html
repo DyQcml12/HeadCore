@@ -11,7 +11,7 @@
 </head>
 <body class="auth-body" data-auth-state="checking" data-theme="dark">
   <button id="themeToggle" class="theme-toggle" type="button" aria-pressed="false" aria-label="切换到浅色模式">
-    <span class="theme-toggle-icon" aria-hidden="true">◐</span>
+    <svg class="theme-toggle-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M3 12h2M19 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4" /><circle cx="12" cy="12" r="4" /></svg>
     <span class="theme-toggle-label">浅色</span>
   </button>
   <main class="auth-shell" id="accountMain">
@@ -19,22 +19,18 @@
       <p>PERSONACORE</p>
       <h1 id="accountTitle">把想保存的部分，<em>留在自己的工坊。</em></h1>
       <span>账户用于保存人格、记忆和模型配置；未启用服务时，页面会明确保持本地展示状态。</span>
-      <section class="testimonial-carousel" aria-label="使用者反馈" aria-roledescription="轮播" data-carousel>
+      <section class="auth-scope-note" aria-label="当前运行范围" data-carousel>
         <div class="testimonial-viewport">
-          <figure class="testimonial-slide is-active" data-testimonial aria-hidden="false"><blockquote>“它把人格、记忆和模型设置放回同一个清晰的工作流。”</blockquote><figcaption>林知夏 · 早期体验者</figcaption></figure>
-          <figure class="testimonial-slide" data-testimonial aria-hidden="true" hidden><blockquote>“切换设备后仍能接上对话，而不是重新解释一遍自己。”</blockquote><figcaption>周衡 · 早期体验者</figcaption></figure>
-          <figure class="testimonial-slide" data-testimonial aria-hidden="true" hidden><blockquote>“本地状态与云端状态分得很清楚，我知道数据此刻在哪里。”</blockquote><figcaption>陈默 · 早期体验者</figcaption></figure>
+          <figure class="testimonial-slide is-active" data-testimonial aria-hidden="false"><blockquote>当前仅验证本机账户、人格草稿和对话链路。</blockquote><figcaption>运行范围 · 127.0.0.1</figcaption></figure>
         </div>
         <div class="testimonial-controls">
           <div class="testimonial-dots" aria-label="选择使用者反馈">
             <button type="button" data-testimonial-index="0" aria-label="显示第 1 条反馈" aria-pressed="true"></button>
-            <button type="button" data-testimonial-index="1" aria-label="显示第 2 条反馈" aria-pressed="false"></button>
-            <button type="button" data-testimonial-index="2" aria-label="显示第 3 条反馈" aria-pressed="false"></button>
           </div>
-          <span id="testimonialCount" class="testimonial-count" aria-hidden="true">01 / 03</span>
+          <span id="testimonialCount" class="testimonial-count" aria-hidden="true">01 / 01</span>
           <button id="testimonialToggle" class="testimonial-toggle" type="button" aria-pressed="false" aria-label="暂停自动轮播" title="暂停自动轮播"><span aria-hidden="true">Ⅱ</span></button>
         </div>
-        <p id="testimonialStatus" class="sr-only" role="status" aria-live="polite" aria-atomic="true">正在显示第 1 条反馈，共 3 条</p>
+        <p id="testimonialStatus" class="sr-only" role="status" aria-live="polite" aria-atomic="true">当前运行范围</p>
       </section>
     </section>
     <section class="account-panel liquid-glass glass-card" aria-labelledby="formTitle">

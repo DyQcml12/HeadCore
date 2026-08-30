@@ -31,6 +31,18 @@ class ChatResponse(BaseModel):
     error: str | None = None
 
 
+class ChatHistoryMessage(BaseModel):
+    id: str
+    role: Literal["user", "assistant"]
+    content: str
+    created_at: str
+
+
+class ChatHistoryResponse(BaseModel):
+    session_id: str
+    messages: list[ChatHistoryMessage]
+
+
 class HealthResponse(BaseModel):
     status: str
     app_name: str
@@ -48,6 +60,9 @@ class PublicAuthStatusResponse(BaseModel):
 class PublicWebVoiceStatusResponse(BaseModel):
     enabled: bool
     max_reply_chars: int
+    provider_ready: bool = False
+    provider: str = "gpt_sovits"
+    base_url: str = ""
 
 
 class WebVoiceSynthesisRequest(BaseModel):

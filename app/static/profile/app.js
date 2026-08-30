@@ -20,7 +20,6 @@ const AGENT_CONFIG_DEFAULTS = {
   max_tokens: "1024",
   web_search: false,
   code_interpreter: false,
-  image_generation: false,
   save_notices: true,
   avatar_data: "",
 };
@@ -30,8 +29,11 @@ const SANDBOX_PERSONA_API = "/api/v1/sandbox/personas";
 const state = {
   account: null,
   authEnabled: false,
+  capabilities: null,
+  memoryRecords: [],
   pendingMemoryId: null,
   editingPersonaId: null,
+  personaSaveBusy: false,
   personas: [],
   personaOwnerId: localSandboxOwnerId(),
 };
@@ -81,12 +83,22 @@ function traitsText(value) {
 }
 
 async function loadPersonas() {
+  if (state.authEnabled && !state.account) {
+    state.personas = [];
+    renderPersonaList();
+    renderDraftStatus();
+    return;
+  }
   try {
     const owner = encodeURIComponent(state.personaOwnerId);
     state.personas = await jsonFetch(`${SANDBOX_PERSONA_API}?user_id=${owner}`);
-  } catch {
+  } catch (error) {
     state.personas = [];
-    toast("本机人格服务暂时无法读取。", true);
+    if (error.status === 401 && state.authEnabled) {
+      renderLocalAccountState("账户会话已失效；登录后才能读取人格草稿。 ");
+    } else {
+      toast("本机人格服务暂时无法读取，请检查服务状态。", true);
+    }
   }
   renderPersonaList();
   const active = state.personas.find((item) => item.persona_id === state.editingPersonaId) || null;
@@ -169,12 +181,43 @@ function renderAgentConfig(config = readAgentConfig()) {
   $("#maxTokens").value = ["512", "1024", "4096"].includes(String(config.max_tokens)) ? String(config.max_tokens) : "1024";
   $("#toolWebSearch").checked = Boolean(config.web_search);
   $("#toolCodeInterpreter").checked = Boolean(config.code_interpreter);
-  $("#toolImageGen").checked = Boolean(config.image_generation);
   $("#localSaveNotices").checked = config.save_notices !== false;
   $("#temperatureValue").textContent = Number($("#temperature").value).toFixed(1);
   $("#topPValue").textContent = Number($("#topP").value).toFixed(2).replace(/0$/, "");
   agentAvatarData = typeof config.avatar_data === "string" ? config.avatar_data : "";
   renderAgentAvatar(agentAvatarData, $("#agentName").value);
+}
+
+function renderCapabilities(data = {}) {
+  state.capabilities = data;
+  const tools = data.tools || {};
+  const rows = [
+    ["web_search", "toolWebSearch", "toolWebSearchState", "toolWebSearchHint"],
+    ["code_interpreter", "toolCodeInterpreter", "toolCodeInterpreterState", "toolCodeInterpreterHint"],
+  ];
+  for (const [key, inputId, stateId, hintId] of rows) {
+    const capability = tools[key] || {};
+    const input = $(`#${inputId}`);
+    const badge = $(`#${stateId}`);
+    const hint = $(`#${hintId}`);
+    const enabled = capability.enabled === true;
+    input.checked = false;
+    input.disabled = true;
+    badge.textContent = enabled ? "已接通" : "未接通";
+    badge.classList.toggle("ready", enabled);
+    hint.textContent = enabled ? "服务端已提供该能力" : (capability.reason || "当前没有可调用的后端契约");
+  }
+}
+
+async function loadCapabilities() {
+  try {
+    renderCapabilities(await jsonFetch("/api/v1/capabilities"));
+  } catch {
+    renderCapabilities({ tools: {
+      web_search: { enabled: false, reason: "无法读取服务能力" },
+      code_interpreter: { enabled: false, reason: "无法读取服务能力" },
+    } });
+  }
 }
 
 function formAgentConfig() {
@@ -186,7 +229,6 @@ function formAgentConfig() {
     max_tokens: $("#maxTokens").value,
     web_search: $("#toolWebSearch").checked,
     code_interpreter: $("#toolCodeInterpreter").checked,
-    image_generation: $("#toolImageGen").checked,
     save_notices: $("#localSaveNotices").checked,
     avatar_data: agentAvatarData,
   };
@@ -199,11 +241,18 @@ function setAgentConfigSaveState(message) {
 
 function saveAgentConfig() {
   const config = formAgentConfig();
-  localStorage.setItem(AGENT_CONFIG_KEY, JSON.stringify(config));
+  try {
+    localStorage.setItem(AGENT_CONFIG_KEY, JSON.stringify(config));
+  } catch {
+    setAgentConfigSaveState("保存失败");
+    toast("Agent 配置无法保存，请检查浏览器本地存储空间。", true);
+    return false;
+  }
   const time = new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(new Date());
   setAgentConfigSaveState(`已保存 · ${time}`);
   renderAgentAvatar(config.avatar_data, config.agent_name);
   if (config.save_notices) toast("Saved · Agent 配置已保存到当前浏览器");
+  return true;
 }
 
 function scheduleAgentConfigSave() {
@@ -214,7 +263,8 @@ function scheduleAgentConfigSave() {
 
 function selectAgentAvatar(file) {
   if (!file) return;
-  if (!file.type.startsWith("image/") || file.size > 512 * 1024) {
+  const allowedTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
+  if (!allowedTypes.has(file.type) || file.size > 512 * 1024) {
     toast("请选择不超过 512 KB 的 PNG、JPEG 或 WebP 图片。", true);
     $("#agentAvatarInput").value = "";
     return;
@@ -257,16 +307,35 @@ function renderPersonaList() {
   }
   const fragment = document.createDocumentFragment();
   for (const record of records) {
+    const row = document.createElement("div");
+    row.className = `persona-list-row${record.persona_id === state.editingPersonaId ? " active" : ""}`;
+    row.dataset.personaId = record.persona_id;
     const button = document.createElement("button");
     button.type = "button";
-    button.className = `persona-list-item${record.persona_id === state.editingPersonaId ? " active" : ""}`;
-    button.dataset.personaId = record.persona_id;
+    button.className = "persona-list-item";
+    button.dataset.personaSelect = record.persona_id;
     const name = document.createElement("strong");
     const detail = document.createElement("small");
     name.textContent = record.name;
     detail.textContent = traitsText(record.traits) || "未填写性格词";
     button.append(name, detail);
-    fragment.append(button);
+    const actions = document.createElement("span");
+    actions.className = "persona-list-actions";
+    const duplicate = document.createElement("button");
+    duplicate.type = "button";
+    duplicate.className = "persona-list-action";
+    duplicate.dataset.personaDuplicate = record.persona_id;
+    duplicate.textContent = "复制";
+    duplicate.setAttribute("aria-label", `复制 ${record.name}`);
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "persona-list-action danger";
+    remove.dataset.personaDelete = record.persona_id;
+    remove.textContent = "删除";
+    remove.setAttribute("aria-label", `删除 ${record.name}`);
+    actions.append(duplicate, remove);
+    row.append(button, actions);
+    fragment.append(row);
   }
   node.replaceChildren(fragment);
 }
@@ -280,6 +349,51 @@ function selectDraft(id) {
   renderPersonaList();
 }
 
+async function duplicatePersona(id) {
+  const source = state.personas.find((item) => item.persona_id === id);
+  if (!source) return;
+  try {
+    const record = await jsonFetch(SANDBOX_PERSONA_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: state.personaOwnerId,
+        name: `${source.name} - \u526f\u672c`,
+        traits: parseTraits(source.traits),
+        detail: source.detail || "",
+        model_label: source.model_label || null,
+      }),
+    });
+    state.personas.unshift(record);
+    state.editingPersonaId = record.persona_id;
+    setFormPersona(record);
+    renderPersonaList();
+    renderDraftStatus(record);
+    toast("人格草稿已复制。");
+  } catch {
+    toast("复制人格草稿失败，请稍后重试。", true);
+  }
+}
+
+async function deletePersona(id) {
+  const record = state.personas.find((item) => item.persona_id === id);
+  if (!record || !window.confirm(`确定删除“${record.name}”吗？此操作不可撤销。`)) return;
+  try {
+    const query = new URLSearchParams({ user_id: state.personaOwnerId });
+    await jsonFetch(`${SANDBOX_PERSONA_API}/${encodeURIComponent(id)}?${query}`, { method: "DELETE" });
+    state.personas = state.personas.filter((item) => item.persona_id !== id);
+    if (state.editingPersonaId === id) {
+      state.editingPersonaId = null;
+      setFormPersona();
+    }
+    renderPersonaList();
+    renderDraftStatus();
+    toast("人格草稿已删除。");
+  } catch {
+    toast("删除人格草稿失败，请稍后重试。", true);
+  }
+}
+
 function selectPreset(name) {
   const preset = presets[name];
   if (!preset) return;
@@ -289,6 +403,12 @@ function selectPreset(name) {
 }
 
 async function savePersona() {
+  if (state.personaSaveBusy) return null;
+  if (state.authEnabled && !state.account) {
+    toast("请先登录账户，再保存可在沙盒加载的人格草稿。", true);
+    openAuthDialog();
+    return null;
+  }
   const persona = formPersona();
   if (!persona.name) {
     $("#personaName").focus();
@@ -301,6 +421,11 @@ async function savePersona() {
     ...persona,
     model_label: model?.bound ? model.name : null,
   };
+  state.personaSaveBusy = true;
+  const saveButton = $("#personaForm button[type=submit]");
+  saveButton.disabled = true;
+  saveButton.setAttribute("aria-busy", "true");
+  saveButton.textContent = "保存中…";
   try {
     const url = state.editingPersonaId
       ? `${SANDBOX_PERSONA_API}/${encodeURIComponent(state.editingPersonaId)}`
@@ -321,6 +446,11 @@ async function savePersona() {
   } catch {
     toast("人格草稿没有保存成功，请检查本机服务。", true);
     return null;
+  } finally {
+    state.personaSaveBusy = false;
+    saveButton.disabled = false;
+    saveButton.removeAttribute("aria-busy");
+    saveButton.textContent = "保存草稿到本机服务";
   }
 }
 
@@ -386,6 +516,11 @@ function activateView(target) {
     button.setAttribute("aria-selected", String(active));
     button.tabIndex = active ? 0 : -1;
   });
+  const params = new URLSearchParams(location.search);
+  if (params.get("view") !== target) {
+    params.set("view", target);
+    history.replaceState(null, "", `${location.pathname}?${params}`);
+  }
   if (target === "memory") loadMemories();
 }
 
@@ -413,7 +548,7 @@ function setCloudState({ loggedIn = false, available = false } = {}) {
   if (!loggedIn) {
     cloud.dataset.cloudState = "locked";
     $("#cloudStatus").textContent = "登录后解锁云端同步";
-    $("#cloudDescription").textContent = "当前未登录。云端发布不会从浏览器草稿自动发生。";
+    $("#cloudDescription").textContent = "当前未登录。云端发布不会从本机草稿自动发生。";
     action.textContent = "登录以查看云端状态";
     action.disabled = false;
     $("#footerCloudState").textContent = "云端同步需登录";
@@ -436,12 +571,14 @@ function openAuthDialog() {
 function renderLocalAccountState(message) {
   state.account = null;
   document.body.dataset.profileState = "local";
-  $("#workshopAccountState").textContent = message || "当前处于本地创作模式：草稿只保存在此浏览器。";
+  $("#workshopAccountState").textContent = message || "当前处于本地创作模式：人格草稿只保存在本机服务。";
   $("#openAuth").textContent = "登录";
   $("#sidebarUsername").textContent = "本地创作者";
-  $("#sidebarAccountState").textContent = "浏览器工作区";
+  $("#sidebarAccountState").textContent = "本机工作区";
   $("#profileDisplayName").textContent = "本地创作者";
   $("#profileEmail").textContent = "尚未登录";
+  $("#profileCreatedAt").textContent = "登录后显示";
+  $("#profileSessionExpiry").textContent = "登录后显示";
   $("#securitySessionState").textContent = "当前没有服务端账户会话。";
   $("#logoutAction").disabled = true;
   setCloudState();
@@ -449,6 +586,7 @@ function renderLocalAccountState(message) {
 
 function renderAccount(account) {
   state.account = account;
+  state.personaOwnerId = account.profile_id || state.personaOwnerId;
   document.body.dataset.profileState = "account";
   $("#workshopAccountState").textContent = `${account.display_name} 已登录：记忆档案可按账户边界读取。`;
   $("#openAuth").textContent = account.display_name;
@@ -456,6 +594,8 @@ function renderAccount(account) {
   $("#sidebarAccountState").textContent = "账户已登录";
   $("#profileDisplayName").textContent = account.display_name;
   $("#profileEmail").textContent = account.email;
+  $("#profileCreatedAt").textContent = formatDate(account.created_at);
+  $("#profileSessionExpiry").textContent = formatDate(account.session_expires_at);
   $("#securitySessionState").textContent = `当前会话有效至 ${formatDate(account.session_expires_at)}。`;
   $("#logoutAction").disabled = false;
   setCloudState({ loggedIn: true, available: false });
@@ -467,7 +607,11 @@ async function logoutAccount() {
   try {
     await jsonFetch("/api/v1/auth/logout", { method: "POST" });
     sessionStorage.removeItem("hutao_csrf_token");
-    renderLocalAccountState("已退出账户；本地 Agent 配置和人格草稿仍保留在此浏览器。 ");
+    renderLocalAccountState("已退出账户；本地 Agent 配置和人格草稿仍保留在本机。 ");
+    state.personas = [];
+    state.editingPersonaId = null;
+    renderPersonaList();
+    renderDraftStatus();
     toast("已退出登录。");
     activateView("configuration");
   } catch {
@@ -476,11 +620,65 @@ async function logoutAccount() {
   }
 }
 
-function memoryEmpty(message) {
+function memoryEmpty(message, countLabel = null) {
   const node = document.createElement("p");
   node.className = "empty-state";
   node.textContent = message;
   $("#memoryList").replaceChildren(node);
+  if (countLabel) $("#memoryCountLabel").textContent = countLabel;
+  if (!countLabel) $("#memoryCountLabel").textContent = "0 条记录";
+}
+
+function renderMemoryList() {
+  const query = $("#memorySearch")?.value.trim().toLowerCase() || "";
+  const filter = $("#memoryFilter")?.value || "all";
+  const records = state.memoryRecords.filter((memory) => {
+    const type = memory.memory_type || "会话记忆";
+    const matchesType = filter === "all" || type === filter;
+    const matchesQuery = !query || `${type} ${memory.content}`.toLowerCase().includes(query);
+    return matchesType && matchesQuery;
+  });
+  $("#memoryCountLabel").textContent = `${records.length} / ${state.memoryRecords.length} 条记录`;
+  if (!records.length) {
+    memoryEmpty(
+      query || filter !== "all" ? "没有符合筛选条件的记忆。" : "当前账户还没有可展示的长期记忆。",
+      `${records.length} / ${state.memoryRecords.length} 条记录`,
+    );
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  for (const memory of records) {
+    const article = document.createElement("article");
+    article.className = "memory-item";
+    article.dataset.memoryId = memory.id;
+    const heading = document.createElement("div");
+    heading.className = "memory-item-meta";
+    const type = document.createElement("span");
+    type.className = "memory-type";
+    type.textContent = memory.memory_type || "会话记忆";
+    const time = document.createElement("time");
+    time.textContent = formatDate(memory.updated_at);
+    heading.append(type, time);
+    const select = document.createElement("button");
+    select.type = "button";
+    select.className = "memory-item-select";
+    select.dataset.memorySelect = memory.id;
+    select.setAttribute("aria-expanded", "false");
+    select.textContent = memory.content;
+    const detail = document.createElement("p");
+    detail.className = "memory-item-detail";
+    detail.hidden = true;
+    detail.textContent = `创建于 ${formatDate(memory.created_at)}${memory.confidence == null ? "" : ` · 置信度 ${Math.round(memory.confidence * 100)}%`}`;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "memory-delete";
+    remove.textContent = "删除";
+    remove.title = "删除记忆";
+    remove.dataset.memoryId = memory.id;
+    article.append(heading, select, detail, remove);
+    fragment.append(article);
+  }
+  $("#memoryList").replaceChildren(fragment);
 }
 
 async function loadMemories() {
@@ -494,27 +692,14 @@ async function loadMemories() {
   memoryEmpty("正在读取账户记忆...");
   try {
     const data = await jsonFetch("/api/v1/memories");
-    if (!data.memories?.length) return memoryEmpty("当前账户还没有可展示的长期记忆。");
-    const fragment = document.createDocumentFragment();
-    for (const memory of data.memories) {
-      const article = document.createElement("article");
-      article.className = "memory-item";
-      const heading = document.createElement("div");
-      const type = document.createElement("span");
-      const time = document.createElement("time");
-      const content = document.createElement("p");
-      const remove = document.createElement("button");
-      type.textContent = memory.memory_type || "会话记忆";
-      time.textContent = formatDate(memory.updated_at);
-      content.textContent = memory.content;
-      remove.type = "button";
-      remove.textContent = "删除";
-      remove.dataset.memoryId = memory.id;
-      heading.append(type, time);
-      article.append(heading, content, remove);
-      fragment.append(article);
-    }
-    $("#memoryList").replaceChildren(fragment);
+    state.memoryRecords = Array.isArray(data.memories) ? data.memories : [];
+    const types = [...new Set(state.memoryRecords.map((memory) => memory.memory_type || "会话记忆"))];
+    const filter = $("#memoryFilter");
+    const currentFilter = filter.value;
+    filter.replaceChildren(new Option("全部类型", "all"), ...types.map((type) => new Option(type, type)));
+    filter.value = types.includes(currentFilter) ? currentFilter : "all";
+    $("#memoryStatus").textContent = `当前账户记忆 · ${state.memoryRecords.length} 条`;
+    renderMemoryList();
   } catch (error) {
     if (error.status === 401) return renderLocalAccountState("账户会话已失效，请重新登录。");
     memoryEmpty("记忆暂时无法读取，请稍后重试。");
@@ -525,8 +710,9 @@ async function loadAccount() {
   try {
     const status = await jsonFetch("/api/v1/auth/status");
     state.authEnabled = Boolean(status.authentication_enabled);
-    if (!state.authEnabled) return renderLocalAccountState("本地创作模式：人格草稿只保存在此浏览器。");
+    if (!state.authEnabled) return renderLocalAccountState("本地创作模式：人格草稿只保存在本机服务。");
     renderAccount(await jsonFetch("/api/v1/auth/me"));
+    if (document.querySelector('[data-view="memory"].active')) await loadMemories();
   } catch (error) {
     if (error.status === 401) return renderLocalAccountState("登录后可读取账户记忆；本地人格草稿不会自动同步。");
     renderLocalAccountState("暂时无法确认账户状态；本地草稿不受影响。");
@@ -550,8 +736,12 @@ $("#agentAvatarInput").addEventListener("change", (event) => selectAgentAvatar(e
 $("#profileAuthAction").addEventListener("click", openAuthDialog);
 $("#logoutAction").addEventListener("click", logoutAccount);
 $("#personaList").addEventListener("click", (event) => {
-  const button = event.target.closest("[data-persona-id]");
-  if (button) selectDraft(button.dataset.personaId);
+  const duplicate = event.target.closest("[data-persona-duplicate]");
+  if (duplicate) return duplicatePersona(duplicate.dataset.personaDuplicate);
+  const remove = event.target.closest("[data-persona-delete]");
+  if (remove) return deletePersona(remove.dataset.personaDelete);
+  const button = event.target.closest("[data-persona-select]");
+  if (button) selectDraft(button.dataset.personaSelect);
 });
 $("#modelFile").addEventListener("change", (event) => selectModelFile(event.currentTarget.files?.[0]));
 $("#bindModel").addEventListener("change", (event) => setModelBinding(event.currentTarget.checked));
@@ -559,7 +749,18 @@ $("#openAuth").addEventListener("click", openAuthDialog);
 $("#cloudAuthAction").addEventListener("click", () => { if (!state.account) openAuthDialog(); });
 $("#memoryAuthAction").addEventListener("click", openAuthDialog);
 $("#refreshMemories").addEventListener("click", loadMemories);
+$("#memorySearch").addEventListener("input", renderMemoryList);
+$("#memoryFilter").addEventListener("change", renderMemoryList);
 $("#memoryList").addEventListener("click", (event) => {
+  const select = event.target.closest("[data-memory-select]");
+  if (select) {
+    const detail = select.nextElementSibling;
+    const expanded = select.getAttribute("aria-expanded") === "true";
+    select.setAttribute("aria-expanded", String(!expanded));
+    detail.hidden = expanded;
+    select.closest(".memory-item")?.classList.toggle("is-selected", !expanded);
+    return;
+  }
   const button = event.target.closest("[data-memory-id]");
   if (!button) return;
   state.pendingMemoryId = button.dataset.memoryId;
@@ -581,16 +782,29 @@ $("#deleteDialog").addEventListener("close", async () => {
 window.addEventListener("message", (event) => {
   if (event.origin !== location.origin || event.data?.type !== "personacore-auth-complete") return;
   $("#authDialog").close();
-  loadAccount();
+  loadAccount().then(async () => {
+    if (state.account) {
+      await migrateLegacyPersonas();
+      await loadPersonas();
+    }
+  });
 });
 
 async function bootstrapWorkshop() {
   renderAgentConfig();
-  activateView("configuration");
-  await migrateLegacyPersonas();
-  await loadPersonas();
+  const requestedView = new URLSearchParams(location.search).get("view");
+  const availableViews = new Set(["persona", "profile", "security", "configuration", "models", "memory", "notifications", "billing"]);
+  activateView(availableViews.has(requestedView) ? requestedView : "persona");
   renderModelDraft();
+  await loadCapabilities();
   await loadAccount();
+  if (!state.authEnabled || state.account) {
+    await migrateLegacyPersonas();
+    await loadPersonas();
+  } else {
+    renderPersonaList();
+    renderDraftStatus();
+  }
 }
 
 bootstrapWorkshop();

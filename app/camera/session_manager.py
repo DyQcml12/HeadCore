@@ -5,8 +5,10 @@ from typing import Callable
 from uuid import uuid4
 
 from app.camera.contracts import (
+    CameraDemoScenario,
     CameraObservation,
     CameraSession,
+    CameraSessionMode,
     CameraSessionStartRequest,
     CameraSessionStatus,
 )
@@ -20,6 +22,7 @@ class CameraSessionManager:
         *,
         perception_enabled: bool,
         local_capture_enabled: bool,
+        demo_enabled: bool = False,
         max_session_seconds: int,
         raw_frame_retention_seconds: int = 0,
         face_identification_enabled: bool = False,
@@ -39,6 +42,7 @@ class CameraSessionManager:
             raise ValueError("camera minimum_observation_confidence must be between 0 and 1")
         self._perception_enabled = perception_enabled
         self._local_capture_enabled = local_capture_enabled
+        self._demo_enabled = demo_enabled
         self._max_session_seconds = max_session_seconds
         self._now = now or (lambda: datetime.now(UTC))
         self._sessions: dict[str, CameraSession] = {}
@@ -46,7 +50,10 @@ class CameraSessionManager:
         self._minimum_observation_confidence = minimum_observation_confidence
 
     def start(self, request: CameraSessionStartRequest, *, owner_key: str) -> CameraSession:
-        if not self._perception_enabled or not self._local_capture_enabled:
+        if request.mode == CameraSessionMode.DEMO:
+            if not self._demo_enabled:
+                raise PermissionError("camera demo is disabled")
+        elif not self._perception_enabled or not self._local_capture_enabled:
             raise PermissionError("camera perception is disabled")
         if not owner_key.strip():
             raise ValueError("camera session owner is required")
@@ -55,6 +62,12 @@ class CameraSessionManager:
             session_id=f"cam_{uuid4().hex}",
             camera_slot=request.camera_slot,
             status=CameraSessionStatus.ACTIVE,
+            mode=request.mode,
+            demo_scenario=(
+                request.demo_scenario or CameraDemoScenario.DESK_WORK
+                if request.mode == CameraSessionMode.DEMO
+                else None
+            ),
             created_at=now,
             expires_at=now + timedelta(seconds=self._max_session_seconds),
         )

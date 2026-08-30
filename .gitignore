@@ -50,3 +50,10 @@ test_localsystem.txt
 __pycache__/
 *.py[cod]
 .idea/
+
+# Local documentation and agent handoff files are not part of GitHub releases
+/docs/
+/AGENTS.md
+/HUTAOCHATCORE_COMPLETE_ARCHITECTURE_AND_ACCEPTANCE_MANUAL.md
+/tmp-agents-index.md
+/requirements-vision.txt

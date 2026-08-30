@@ -1,0 +1,38 @@
+{
+  "application": "HutaoAssistant",
+  "platform": ["windows-10", "windows-11"],
+  "required": [
+    "app/static/desktop/",
+    "HuTaoAssistant.exe",
+    "base_library.zip",
+    "python311.dll"
+  ],
+  "optional": [
+    "models/text/",
+    "models/embedding/",
+    "models/vision/",
+    "models/voice/",
+    "tools/voice-training/"
+  ],
+  "excluded": [
+    "external/",
+    "model_training/",
+    "tests/",
+    "logs/",
+    "tmp/",
+    "output/",
+    "build/",
+    "*.zip",
+    ".env",
+    "*.log",
+    "__pycache__/",
+    "node_modules/"
+  ],
+  "notes": [
+    "The core installer is built in an isolated minimal environment and does not copy the developer Conda environment.",
+    "Local ASR, local embeddings, camera inference and voice-training runtimes are optional packs.",
+    "Only redistribute model files and third-party runtimes when their licenses allow redistribution.",
+    "The installer creates data, models, logs, backups and uninstall directories beside the selected install root.",
+    "The default Hu Tao assets must be reviewed for character, voice and model distribution rights before release."
+  ]
+}

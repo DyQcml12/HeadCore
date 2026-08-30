@@ -13,8 +13,9 @@ def read_project_text(relative_path: str) -> str:
 def test_current_user_facing_surfaces_use_headcore_and_hutao_identity() -> None:
     surfaces = [
         "app/static/control/index.html",
+        "app/static/profile/index.html",
+        "app/static/web/studio/index.html",
         "README.md",
-        "docs/HUTAOCHATCORE_COMPLETE_ARCHITECTURE_AND_ACCEPTANCE_MANUAL.md",
     ]
 
     for relative_path in surfaces:

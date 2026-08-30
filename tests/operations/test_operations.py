@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pytest
@@ -14,6 +14,9 @@ from app.operations.reports import summarize_test_report
 from app.operations.observability import classify_error_lines
 from app.operations.probes import HttpStatusProvider, StaticStatusProvider
 from app.operations.project_status import DatabaseControlStatusProvider, asr_model_readiness
+from app.operations.project_status import LocalVisionStatusProvider
+from app.camera.local_runtime import LocalVisionCapability
+from app.core.config import load_settings
 from app.database_control.contracts import DatabaseStatus
 from app.database_control.contracts import ActorIdentity, DatabaseActor, DatabasePermissions, SourceAccount
 from app.database_control.errors import ForbiddenError
@@ -222,6 +225,24 @@ def test_database_control_provider_uses_public_status_contract() -> None:
     assert result.detail == "readiness failed; missing tables: 1"
 
 
+def test_database_control_provider_reports_missing_administrator_bootstrap() -> None:
+    class Repository:
+        async def get_status(self) -> DatabaseStatus:
+            return DatabaseStatus(
+                database="hutao_chat_core",
+                schema_version="v2.001_hutao_chat_core_schema",
+                ready=False,
+                database_v2_enabled=True,
+                required_tables={"profiles": True, "messages": True},
+                admin_exists=False,
+            )
+
+    result = asyncio.run(DatabaseControlStatusProvider(Repository()).get_status())  # type: ignore[arg-type]
+
+    assert result.state is ComponentState.DEGRADED
+    assert result.detail == "readiness failed; administrator bootstrap missing"
+
+
 def test_asr_readiness_checks_local_models_without_loading_them(monkeypatch, tmp_path: Path) -> None:
     model = tmp_path / "sensevoice"
     model.mkdir()
@@ -233,6 +254,41 @@ def test_asr_readiness_checks_local_models_without_loading_them(monkeypatch, tmp
     assert (configured, ready) == (True, True)
     assert "sensevoice-small" in detail
     assert unknown[0:2] == (False, False)
+
+
+def test_local_vision_status_distinguishes_disabled_from_missing_labeling(monkeypatch) -> None:
+    disabled_settings = replace(
+        load_settings(),
+        camera_perception_enabled=False,
+        camera_local_capture_enabled=False,
+    )
+    disabled = asyncio.run(LocalVisionStatusProvider(disabled_settings).get_status())
+    assert disabled.state is ComponentState.NOT_CONFIGURED
+    assert disabled.component_id == "camera_vision"
+
+    capability = LocalVisionCapability(
+        opencv_available=True,
+        mediapipe_available=False,
+        ultralytics_available=False,
+        yolo_model_configured=False,
+        yolo_model_exists=False,
+        capture_ready=True,
+        labeling_ready=False,
+        reason_codes=("mediapipe_missing", "yolo_model_not_configured"),
+    )
+    monkeypatch.setattr(
+        "app.operations.project_status.inspect_local_vision_capabilities",
+        lambda **_kwargs: capability,
+    )
+    enabled = replace(
+        load_settings(),
+        camera_perception_enabled=True,
+        camera_local_capture_enabled=True,
+    )
+    status = asyncio.run(LocalVisionStatusProvider(enabled).get_status())
+    assert status.state is ComponentState.DEGRADED
+    assert "labeling unavailable" in status.detail
+    assert "mediapipe_missing" in status.detail
 
 
 class ControlWriteRepositoryFake:

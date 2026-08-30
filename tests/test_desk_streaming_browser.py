@@ -112,6 +112,11 @@ const expectedReply = "流式回答";
       body: JSON.stringify({ authentication_enabled: false, registration_enabled: false, password_reset_enabled: false }),
     }));
     await page.route("**/health", (route) => route.fulfill({ status: 200, body: '{"status":"ok"}' }));
+    await page.route("**/api/v1/voice/status", (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ enabled: true, provider_ready: true, max_reply_chars: 800 }),
+    }));
     await page.route("**/api/v1/voice/synthesize", (route) => route.fulfill({
       status: 200,
       contentType: "audio/mpeg",
@@ -138,9 +143,77 @@ const expectedReply = "流式回答";
     const voiceRequest = await voiceRequestPromise;
     const voicePayload = voiceRequest.postDataJSON();
     if (!voicePayload.reply_id || voicePayload.text) throw new Error("voice playback sent an unsafe request payload");
-    await page.locator("#chatInput").fill("继续");
+    const input = page.locator("#chatInput");
+    await input.fill("第一行\n第二行");
+    const multilineHeight = await input.evaluate((node) => node.getBoundingClientRect().height);
+    if (multilineHeight <= 48) throw new Error(`composer did not grow for multiline input: ${multilineHeight}`);
     if (await page.locator("#sendButton").isDisabled()) throw new Error("composer remained busy after streamed reply");
-    if (consoleErrors.length) throw new Error(`browser console errors: ${consoleErrors.join(" | ")}`);
+    if (await page.evaluate(() => localStorage.getItem("personacore_desk_input_draft")) !== "第一行\n第二行") {
+      throw new Error("composer draft was not stored locally");
+    }
+
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForFunction(() => document.body.getAttribute("aria-busy") === "false", { timeout: 5000 });
+    if (await page.locator("#chatInput").inputValue() !== "第一行\n第二行") {
+      throw new Error("composer draft was not restored after reload");
+    }
+
+    await page.route("**/api/v1/chat/stream", (route) => route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "temporary failure" }),
+    }), { times: 1 });
+    await page.locator("#chatInput").fill("重试逻辑");
+    await page.locator("#chatInput").press("Enter");
+    await page.locator(".message-retry-action").waitFor({ state: "visible", timeout: 5000 });
+    await page.waitForFunction(() => document.body.getAttribute("aria-busy") === "false", { timeout: 5000 });
+    await page.locator(".message-retry-action").click();
+    await page.waitForFunction((reply) => {
+      return [...document.querySelectorAll(".message.assistant p")]
+        .some((node) => node.textContent === reply);
+    }, expectedReply, { timeout: 5000 });
+    const retriedUserMessages = await page.locator(".message.user p").allTextContents();
+    if (retriedUserMessages.filter((text) => text === "重试逻辑").length !== 1) {
+      throw new Error("retry duplicated the user message");
+    }
+    if (await page.evaluate(() => localStorage.getItem("personacore_desk_input_draft")) !== null) {
+      throw new Error("sent composer draft was not cleared");
+    }
+
+    await page.evaluate(() => {
+      const messages = document.querySelector("#messages");
+      for (let index = 0; index < 30; index += 1) {
+        const article = document.createElement("article");
+        article.className = "message assistant";
+        article.style.minHeight = "72px";
+        article.style.flex = "0 0 72px";
+        article.textContent = `scroll fixture ${index}`;
+        messages.append(article);
+      }
+      messages.scrollTop = 0;
+      messages.dispatchEvent(new Event("scroll"));
+    });
+    await page.locator("#scrollToLatest").waitFor({ state: "visible", timeout: 3000 });
+    await page.locator("#scrollToLatest").click();
+    await page.waitForFunction(() => {
+      const node = document.querySelector("#messages");
+      return node.scrollHeight - node.scrollTop - node.clientHeight < 72;
+    }, undefined, { timeout: 3000 });
+    await page.waitForFunction(() => document.body.getAttribute("aria-busy") === "false", { timeout: 5000 });
+    const previousSessionId = await page.evaluate(() => localStorage.getItem("deskSessionId"));
+    await page.locator("#newSessionAction").click();
+    await page.waitForLoadState("domcontentloaded");
+    await page.waitForFunction((previous) => {
+      return localStorage.getItem("deskSessionId") !== previous
+        && Boolean(document.querySelector(".conversation-welcome"));
+    }, previousSessionId, { timeout: 5000 });
+    if (await page.locator(".message").count()) throw new Error("new session did not clear the sandbox messages");
+    const unexpectedConsoleErrors = consoleErrors.filter((message) => {
+      return !message.includes("status of 503 (Service Unavailable)");
+    });
+    if (unexpectedConsoleErrors.length) {
+      throw new Error(`browser console errors: ${unexpectedConsoleErrors.join(" | ")}`);
+    }
   } finally {
     await browser.close();
   }

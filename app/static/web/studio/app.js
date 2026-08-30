@@ -11,6 +11,7 @@ const state = {
   userId: localSandboxOwnerId(),
   authEnabled: false,
   ready: false,
+  serviceReachable: false,
   busy: false,
   composerMode: "text",
   recorder: null,
@@ -21,14 +22,19 @@ const state = {
   ttsEnabled: false,
   ttsMaxReplyChars: 0,
   voicePlayback: null,
+  streamController: null,
+  voiceInputAvailable: false,
   activePersonaId: "default",
   activePersona: null,
   personas: [],
+  followMessages: true,
 };
 
 localStorage.setItem("deskSessionId", state.sessionId);
 const $ = (selector) => document.querySelector(selector);
 const SANDBOX_PERSONA_API = "/api/v1/sandbox/personas";
+const CHAT_HISTORY_API = "/api/v1/chat/history";
+const DESK_DRAFT_KEY = "personacore_desk_input_draft";
 
 async function loadPersonas() {
   try {
@@ -153,8 +159,10 @@ async function streamTextFetch(url, options, onChunk) {
   return { text, replyId: response.headers.get("X-Hutao-Reply-Id"), interrupted };
 }
 
-function messageTime() {
-  return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(new Date());
+function messageTime(value = null) {
+  return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(
+    value ? new Date(value) : new Date(),
+  );
 }
 
 function updateHistoryTimestamp() {
@@ -162,6 +170,60 @@ function updateHistoryTimestamp() {
   const now = new Date();
   time.dateTime = now.toISOString();
   time.textContent = messageTime();
+}
+
+function updateHistoryLabel(title = "") {
+  const node = $("#historyTitle");
+  if (!node) return;
+  const clean = String(title || "").replace(/\s+/g, " ").trim();
+  node.textContent = clean ? clean.slice(0, 34) : "\u65b0\u4f1a\u8bdd";
+}
+
+function clearMessages() {
+  $("#messages").querySelectorAll(".message, .thinking-status").forEach((node) => node.remove());
+}
+
+async function loadHistory() {
+  const params = new URLSearchParams({
+    session_id: state.sessionId,
+    user_id: state.userId,
+    limit: "80",
+  });
+  try {
+    const data = await jsonFetch(`${CHAT_HISTORY_API}?${params}`);
+    const messages = Array.isArray(data?.messages) ? data.messages : [];
+    clearMessages();
+    if (!messages.length) {
+      updateHistoryLabel();
+      updateHistoryTimestamp();
+      return;
+    }
+    messages.forEach((message) => addMessage(message.role, message.content, {
+      forceScroll: false,
+      createdAt: message.created_at,
+    }));
+    updateHistoryLabel(messages.find((message) => message.role === "user")?.content);
+    const latest = messages[messages.length - 1]?.created_at;
+    const time = $("#historyTimestamp");
+    if (latest) {
+      time.dateTime = latest;
+      time.textContent = messageTime(latest);
+    }
+    scrollMessages(true);
+  } catch (error) {
+    if (error.status !== 401) toast("历史消息暂时无法读取，当前仍可继续对话。", true);
+  }
+}
+
+function startNewSession() {
+  if (state.busy || state.holdingToTalk) {
+    toast("请先停止当前回复，再新建会话。", true);
+    return;
+  }
+  stopReplyVoice();
+  state.sessionId = `desk-${crypto.randomUUID()}`;
+  localStorage.setItem("deskSessionId", state.sessionId);
+  location.reload();
 }
 
 function setHistoryMenuOpen(open, restoreFocus = false) {
@@ -185,11 +247,13 @@ async function copySessionId() {
   }
 }
 
-function setContextCollapsed(collapsed) {
+function setContextCollapsed(collapsed, restoreMobileFocus = false) {
   const shell = $(".conversation-shell");
   const sidebar = $("#contextSidebar");
   const content = $("#contextContent");
   const trigger = $("#contextToggle");
+  const mobileTrigger = $("#mobileContextAction");
+  const backdrop = $("#contextBackdrop");
   const expanded = !collapsed;
   const label = collapsed ? "展开当前人格栏" : "折叠当前人格栏";
 
@@ -199,14 +263,35 @@ function setContextCollapsed(collapsed) {
   trigger.setAttribute("aria-expanded", String(expanded));
   trigger.setAttribute("aria-label", label);
   trigger.title = label;
+  mobileTrigger.setAttribute("aria-expanded", String(expanded));
+  mobileTrigger.setAttribute("aria-label", expanded ? "关闭当前人格" : "查看当前人格");
+  mobileTrigger.title = expanded ? "关闭当前人格" : "查看当前人格";
+
+  const mobileOpen = mobileContextQuery.matches && expanded;
+  document.body.classList.toggle("context-drawer-open", mobileOpen);
+  backdrop.hidden = !mobileOpen;
+  if (restoreMobileFocus && mobileContextQuery.matches) mobileTrigger.focus();
 }
 
-function scrollMessages() {
+function messagesNearBottom() {
   const node = $("#messages");
-  node.scrollTop = node.scrollHeight;
+  return node.scrollHeight - node.scrollTop - node.clientHeight < 72;
 }
 
-function addMessage(role, text) {
+function updateScrollControl() {
+  const button = $("#scrollToLatest");
+  const show = !state.followMessages && $("#messages").scrollHeight > $("#messages").clientHeight;
+  button.hidden = !show;
+}
+
+function scrollMessages(force = false) {
+  const node = $("#messages");
+  if (force) state.followMessages = true;
+  if (state.followMessages) node.scrollTop = node.scrollHeight;
+  window.requestAnimationFrame(updateScrollControl);
+}
+
+function addMessage(role, text, { forceScroll = role === "user", createdAt = null } = {}) {
   $(".conversation-welcome")?.remove();
   const article = document.createElement("article");
   const name = document.createElement("span");
@@ -216,11 +301,25 @@ function addMessage(role, text) {
   name.className = "message-author";
   name.textContent = role === "user" ? "你" : (state.activePersona?.name || "人格引擎");
   content.textContent = text;
-  time.textContent = messageTime();
+  if (createdAt) time.dateTime = createdAt;
+  time.textContent = messageTime(createdAt);
   article.append(name, content, time);
   $("#messages").append(article);
-  scrollMessages();
+  scrollMessages(forceScroll);
   return article;
+}
+
+function attachRetryControl(message, text, inputSource) {
+  const button = document.createElement("button");
+  button.className = "message-retry-action";
+  button.type = "button";
+  button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7" /></svg><span>重试</span>';
+  button.addEventListener("click", () => {
+    if (state.busy || !navigator.onLine) return;
+    message.remove();
+    sendChat(text, inputSource, { appendUser: false });
+  });
+  message.append(button);
 }
 
 function addThinkingStatus(label = "正在组织回复") {
@@ -251,21 +350,69 @@ function finishThinkingStatus(node, outcome = "done") {
 function updateComposer() {
   const input = $("#chatInput");
   $("#charCount").textContent = `${input.value.length}/4000`;
-  $("#sendButton").disabled = !state.ready || state.busy || state.composerMode !== "text" || !input.value.trim();
-  $("#holdToTalk").disabled = !state.ready || state.busy || state.composerMode !== "voice";
+  const sendButton = $("#sendButton");
+  const canSendText = state.ready
+    && state.serviceReachable
+    && navigator.onLine
+    && state.composerMode === "text"
+    && Boolean(input.value.trim());
+  sendButton.disabled = state.busy ? !state.streamController : !canSendText;
+  sendButton.dataset.busy = String(state.busy);
+  $("#holdToTalk").disabled = !state.ready
+    || !state.serviceReachable
+    || !navigator.onLine
+    || state.busy
+    || state.composerMode !== "voice";
+}
+
+function readInputDraft() {
+  try {
+    return localStorage.getItem(DESK_DRAFT_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+function persistInputDraft(value) {
+  try {
+    if (value) localStorage.setItem(DESK_DRAFT_KEY, value);
+    else localStorage.removeItem(DESK_DRAFT_KEY);
+  } catch {
+    // Chat remains usable when browser storage is unavailable.
+  }
+}
+
+function resizeComposerInput() {
+  const input = $("#chatInput");
+  input.style.height = "0px";
+  const maxHeight = window.innerWidth <= 767 ? 120 : 144;
+  input.style.height = `${Math.min(Math.max(input.scrollHeight, 24), maxHeight)}px`;
+  input.style.overflowY = input.scrollHeight > maxHeight ? "auto" : "hidden";
 }
 
 function setBusy(busy, label = "") {
   state.busy = busy;
   document.body.setAttribute("aria-busy", String(busy));
   $("#composerState").textContent = label;
-  $("#sendLabel").textContent = busy ? "回复中" : "发送";
-  $("#sendButton").setAttribute("aria-label", busy ? "正在等待回复" : "发送测试消息");
+  $("#sendLabel").textContent = busy ? "停止" : "发送";
+  $("#sendButton").setAttribute("aria-label", busy ? "停止当前回复" : "发送消息");
+  const sendIcon = $("#sendButton svg");
+  if (sendIcon) {
+    sendIcon.innerHTML = busy
+      ? '<rect x="7" y="7" width="10" height="10" rx="1.5"></rect>'
+      : '<path d="M12 19V5m-6 6 6-6 6 6" />';
+  }
   updateComposer();
 }
 
 function redirectToLogin() {
-  location.assign("/me");
+  const returnTo = `${location.pathname}${location.search}`;
+  location.assign(`/auth?return_to=${encodeURIComponent(returnTo)}`);
+}
+
+function cancelActiveReply() {
+  if (!state.streamController) return;
+  state.streamController.abort();
 }
 
 function stopReplyVoice() {
@@ -282,13 +429,23 @@ async function playReplyVoice(button, replyId) {
   button.disabled = true;
   button.textContent = "准备播放";
   try {
-    const response = await fetch("/api/v1/voice/synthesize", {
+    const response = await requestWithinTimeout(
+      (signal) => fetch("/api/v1/voice/synthesize", {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(csrfToken() ? { "X-CSRF-Token": csrfToken() } : {}) },
       credentials: "same-origin",
+      signal,
       body: JSON.stringify({ reply_id: replyId, session_id: state.sessionId, user_id: state.userId }),
-    });
-    if (!response.ok) throw new Error("voice unavailable");
+      }),
+      20_000,
+    );
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      const detail = typeof payload?.detail === "string" ? payload.detail : "";
+      if (response.status === 404) throw new Error("\u8fd9\u6761\u56de\u590d\u5df2\u8fc7\u671f\uff0c\u8bf7\u91cd\u65b0\u53d1\u9001\u6d88\u606f");
+      if (response.status === 503) throw new Error("\u8bed\u97f3\u670d\u52a1\u6682\u672a\u542f\u52a8\uff0c\u6587\u5b57\u56de\u590d\u4ecd\u53ef\u6b63\u5e38\u4f7f\u7528");
+      throw new Error(detail || "\u8bed\u97f3\u64ad\u653e\u6682\u65f6\u4e0d\u53ef\u7528");
+    }
     const url = URL.createObjectURL(await response.blob());
     const audio = new Audio(url);
     const clear = () => {
@@ -302,9 +459,12 @@ async function playReplyVoice(button, replyId) {
     state.voicePlayback = { audio, url, button };
     button.textContent = "停止播放";
     await audio.play();
-  } catch {
+  } catch (error) {
     button.textContent = "播放语音";
-    toast("回复语音暂时无法播放。", true);
+    const message = error?.name === "AbortError"
+      ? "\u8bed\u97f3\u5408\u6210\u7b49\u5f85\u8d85\u65f6\uff0c\u8bf7\u68c0\u67e5\u672c\u5730\u8bed\u97f3\u670d\u52a1"
+      : error?.message || "\u56de\u590d\u8bed\u97f3\u6682\u65f6\u65e0\u6cd5\u64ad\u653e";
+    toast(message, true);
   } finally {
     button.disabled = false;
   }
@@ -321,19 +481,29 @@ function attachReplyVoiceControl(message, replyId, text) {
   message.append(button);
 }
 
-async function sendChat(text, inputSource = "text") {
+async function sendChat(text, inputSource = "text", { appendUser = true } = {}) {
   const clean = text.trim();
-  if (!clean || state.busy || !state.ready) return;
-  addMessage("user", clean);
-  updateHistoryTimestamp();
-  if (inputSource === "text") $("#chatInput").value = "";
+  if (!clean || state.busy || !state.ready || !navigator.onLine) return;
+  if (appendUser) {
+    addMessage("user", clean);
+    updateHistoryLabel(clean);
+    updateHistoryTimestamp();
+  }
+  if (inputSource === "text" && appendUser) {
+    $("#chatInput").value = "";
+    persistInputDraft("");
+    resizeComposerInput();
+  }
   const thinking = addThinkingStatus(inputSource === "audio" ? "正在生成回复" : "正在组织回复");
+  const controller = new AbortController();
+  state.streamController = controller;
   setBusy(true, inputSource === "audio" ? "语音已识别，正在回复" : "正在回复");
+  let responseMessage = null;
   try {
-    let responseMessage = null;
     const reply = await streamTextFetch("/api/v1/chat/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
       body: JSON.stringify({
         user_input: clean,
         session_id: state.sessionId,
@@ -362,11 +532,27 @@ async function sendChat(text, inputSource = "text") {
     }
     attachReplyVoiceControl(responseMessage, reply.replyId, reply.text);
   } catch (error) {
+    if (error.name === "AbortError") {
+      finishThinkingStatus(thinking);
+      if (responseMessage) {
+        const note = document.createElement("div");
+        note.className = "message-stream-note interrupted";
+        note.textContent = "回复已停止，以上是已生成的内容。";
+        responseMessage.append(note);
+      } else {
+        addMessage("assistant", "回复已停止。");
+      }
+      return;
+    }
     if (error.status === 401 && state.authEnabled) return redirectToLogin();
     finishThinkingStatus(thinking, "error");
-    addMessage("assistant", "这次回复没有完成，请稍后重试。");
+    const failureMessage = addMessage("assistant", "这次回复没有完成。你可以直接重试，不需要重新输入。", { forceScroll: false });
+    failureMessage.classList.add("message-error");
+    attachRetryControl(failureMessage, clean, inputSource);
     toast("对话请求没有完成，请检查服务状态。", true);
+    checkCore();
   } finally {
+    if (state.streamController === controller) state.streamController = null;
     setBusy(false);
     updateComposer();
     if (state.composerMode === "text") $("#chatInput").focus();
@@ -381,9 +567,21 @@ function formatDuration(milliseconds) {
 function setRecordingControls(recording, disabled = false) {
   const button = $("#holdToTalk");
   button.classList.toggle("recording", recording);
-  button.disabled = disabled || state.busy || !state.ready || state.composerMode !== "voice";
+  button.disabled = disabled
+    || state.busy
+    || !state.ready
+    || !state.serviceReachable
+    || !navigator.onLine
+    || state.composerMode !== "voice";
   $("#holdToTalkLabel").textContent = recording ? "松开发送" : disabled ? "正在发送" : "按住说话";
   if (!recording && !disabled) $("#voiceDuration").textContent = "00:00";
+}
+
+function setVoiceReview(visible, text = "") {
+  const panel = $("#voiceReview");
+  panel.hidden = !visible;
+  $("#voiceTranscript").value = text;
+  if (visible) window.requestAnimationFrame(() => $("#voiceTranscript").focus());
 }
 
 async function requestWithinTimeout(run, timeoutMs) {
@@ -394,7 +592,7 @@ async function requestWithinTimeout(run, timeoutMs) {
 }
 
 async function sendAudio(blob) {
-  if (!state.ready || state.busy) return;
+  if (!state.ready || !state.serviceReachable || !navigator.onLine || state.busy) return;
   const form = new FormData();
   form.append("file", blob, "voice.webm");
   form.append("session_id", state.sessionId);
@@ -413,8 +611,10 @@ async function sendAudio(blob) {
       return;
     }
     state.busy = false;
-    await sendChat(data.transcript_text || "未识别到有效文本", "audio");
+    setVoiceReview(true, data.transcript_text || "");
+    setBusy(false, "请确认识别结果后发送");
   } catch (error) {
+    setVoiceReview(false);
     finishThinkingStatus(thinking, "error");
     const message = error.name === "AbortError" ? "语音识别等待过久，请重试。" : "这段语音暂时没有处理完成，请再试一次。";
     addMessage("assistant", message);
@@ -427,7 +627,12 @@ async function sendAudio(blob) {
 }
 
 async function beginHoldRecording() {
-  if (state.holdingToTalk || state.busy || !state.ready || state.composerMode !== "voice") return;
+  if (state.holdingToTalk
+    || state.busy
+    || !state.ready
+    || !state.serviceReachable
+    || !navigator.onLine
+    || state.composerMode !== "voice") return;
   if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
     toast("当前浏览器不支持麦克风语音。", true);
     return;
@@ -469,7 +674,12 @@ function finishHoldRecording() {
 }
 
 function setComposerMode(mode, shouldFocus = true) {
+  if (mode === "voice" && !state.voiceInputAvailable) {
+    toast("当前浏览器不支持麦克风输入。", true);
+    return;
+  }
   state.composerMode = mode === "voice" ? "voice" : "text";
+  if (state.composerMode === "text") setVoiceReview(false);
   $("#chatForm").dataset.composerMode = state.composerMode;
   $("#textComposer").hidden = state.composerMode !== "text";
   $("#voiceComposer").hidden = state.composerMode !== "voice";
@@ -488,29 +698,71 @@ function setComposerMode(mode, shouldFocus = true) {
 }
 
 async function checkCore() {
-  let label = "本机服务未连接";
+  let connected = false;
+  let label = navigator.onLine ? "本机服务未连接" : "网络已断开";
   try {
+    if (!navigator.onLine) throw new Error("offline");
     await jsonFetch("/health");
+    connected = true;
     label = "本机服务已连接";
   } catch {
   } finally {
+    state.serviceReachable = connected;
     const footerStatus = $("#footerCoreStatus");
-    if (footerStatus) footerStatus.textContent = label;
+    if (footerStatus) {
+      footerStatus.textContent = label;
+      footerStatus.classList.toggle("offline", !connected);
+    }
+    updateComposer();
+    setRecordingControls(false);
   }
 }
 
 function loadVoiceInputCapability() {
-  return Boolean(navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== "undefined");
+  state.voiceInputAvailable = Boolean(navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== "undefined");
+  const button = $("#voiceModeAction");
+  button.disabled = !state.voiceInputAvailable;
+  if (!state.voiceInputAvailable) {
+    button.setAttribute("aria-label", "当前浏览器不支持语音输入");
+    button.title = "当前浏览器不支持语音输入";
+  }
+  return state.voiceInputAvailable;
 }
 
 async function loadVoiceStatus() {
+  const checkButton = $("#voiceCheckAction");
+  if (checkButton) {
+    checkButton.disabled = true;
+    checkButton.setAttribute("aria-busy", "true");
+  }
   try {
     const status = await jsonFetch("/api/v1/voice/status");
-    state.ttsEnabled = Boolean(status.enabled);
+    state.ttsEnabled = Boolean(status.enabled && status.provider_ready);
     state.ttsMaxReplyChars = Number.isInteger(status.max_reply_chars) ? status.max_reply_chars : 0;
+    const statusNode = $("#voiceStatus");
+    if (statusNode) {
+      statusNode.textContent = state.ttsEnabled
+        ? `语音回复在线 · ${status.provider || "本地服务"}`
+        : status.enabled
+          ? "语音回复未启动"
+          : "语音回复未启用";
+      statusNode.classList.toggle("offline", !state.ttsEnabled);
+      statusNode.dataset.state = state.ttsEnabled ? "ready" : "offline";
+    }
   } catch {
     state.ttsEnabled = false;
     state.ttsMaxReplyChars = 0;
+    const statusNode = $("#voiceStatus");
+    if (statusNode) {
+      statusNode.textContent = "语音回复不可用";
+      statusNode.classList.add("offline");
+      statusNode.dataset.state = "offline";
+    }
+  } finally {
+    if (checkButton) {
+      checkButton.disabled = false;
+      checkButton.removeAttribute("aria-busy");
+    }
   }
 }
 
@@ -545,25 +797,34 @@ async function ensureDeskAccess() {
 
 $("#chatForm").addEventListener("submit", (event) => {
   event.preventDefault();
+  if (state.busy) {
+    cancelActiveReply();
+    return;
+  }
   sendChat($("#chatInput").value);
 });
 $("#chatInput").addEventListener("input", (event) => {
+  persistInputDraft(event.currentTarget.value);
+  resizeComposerInput();
   updateComposer();
 });
 $("#chatInput").addEventListener("keydown", (event) => {
   if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
   event.preventDefault();
+  if (state.busy) {
+    cancelActiveReply();
+    return;
+  }
   sendChat(event.currentTarget.value);
 });
 document.querySelectorAll("[data-prompt]").forEach((button) => {
   button.addEventListener("click", () => {
     $("#chatInput").value = button.dataset.prompt;
+    persistInputDraft($("#chatInput").value);
+    resizeComposerInput();
     $("#chatInput").focus();
     updateComposer();
   });
-});
-$("#attachmentAction").addEventListener("click", () => {
-  toast("附件仅保留在本地沙盒，当前页面不会上传文件。");
 });
 $("#historyMenuButton").addEventListener("click", () => {
   const open = $("#historyMenuButton").getAttribute("aria-expanded") !== "true";
@@ -573,20 +834,36 @@ $("#historyMenu").addEventListener("click", (event) => {
   const action = event.target.closest("[data-history-action]");
   if (action?.dataset.historyAction === "copy-session") copySessionId();
 });
+$("#newSessionAction").addEventListener("click", startNewSession);
+$("#newSessionSidebar").addEventListener("click", startNewSession);
 $("#contextToggle").addEventListener("click", () => {
   const collapsed = $("#contextToggle").getAttribute("aria-expanded") === "true";
-  setContextCollapsed(collapsed);
+  setContextCollapsed(collapsed, collapsed);
 });
 const compactContextQuery = window.matchMedia("(max-width: 1199px)");
+const mobileContextQuery = window.matchMedia("(max-width: 840px)");
 compactContextQuery.addEventListener("change", (event) => setContextCollapsed(event.matches));
+$("#mobileContextAction").addEventListener("click", () => {
+  const expanded = $("#mobileContextAction").getAttribute("aria-expanded") === "true";
+  setContextCollapsed(expanded, expanded);
+  if (!expanded) window.requestAnimationFrame(() => $("#contextToggle").focus());
+});
+$("#contextBackdrop").addEventListener("click", () => setContextCollapsed(true, true));
 document.addEventListener("click", (event) => {
   if ($("#historyMenu").hidden || event.target.closest(".history-entry")) return;
   setHistoryMenuOpen(false);
 });
 document.addEventListener("keydown", (event) => {
-  if (event.key !== "Escape" || $("#historyMenu").hidden) return;
-  event.preventDefault();
-  setHistoryMenuOpen(false, true);
+  if (event.key !== "Escape") return;
+  if (!$("#historyMenu").hidden) {
+    event.preventDefault();
+    setHistoryMenuOpen(false, true);
+    return;
+  }
+  if (mobileContextQuery.matches && $("#mobileContextAction").getAttribute("aria-expanded") === "true") {
+    event.preventDefault();
+    setContextCollapsed(true, true);
+  }
 });
 $("#voiceModeAction").addEventListener("click", () => {
   setComposerMode(state.composerMode === "voice" ? "text" : "voice");
@@ -596,21 +873,65 @@ $("#holdToTalk").addEventListener("pointerup", finishHoldRecording);
 $("#holdToTalk").addEventListener("pointercancel", finishHoldRecording);
 $("#holdToTalk").addEventListener("keydown", (event) => { if (!event.repeat && ["Enter", " "].includes(event.key)) { event.preventDefault(); beginHoldRecording(); } });
 $("#holdToTalk").addEventListener("keyup", (event) => { if (["Enter", " "].includes(event.key)) { event.preventDefault(); finishHoldRecording(); } });
+$("#voiceTranscriptSend").addEventListener("click", () => {
+  const text = $("#voiceTranscript").value.trim();
+  if (!text) {
+    toast("请先确认识别结果，或重新录音。", true);
+    $("#voiceTranscript").focus();
+    return;
+  }
+  setVoiceReview(false);
+  sendChat(text, "audio");
+});
+$("#voiceTranscriptCancel").addEventListener("click", () => {
+  setVoiceReview(false);
+  $("#holdToTalk").focus();
+});
 $("#personaSelect").addEventListener("change", (event) => selectPersona(event.currentTarget.value));
+$("#voiceCheckAction")?.addEventListener("click", loadVoiceStatus);
+$("#messages").addEventListener("scroll", () => {
+  state.followMessages = messagesNearBottom();
+  updateScrollControl();
+}, { passive: true });
+$("#scrollToLatest").addEventListener("click", () => scrollMessages(true));
+window.addEventListener("resize", () => {
+  resizeComposerInput();
+  updateScrollControl();
+});
+window.addEventListener("offline", () => {
+  state.serviceReachable = false;
+  $("#footerCoreStatus").textContent = "网络已断开";
+  $("#footerCoreStatus").classList.add("offline");
+  updateComposer();
+  toast("网络已断开，输入草稿已保留。", true);
+});
+window.addEventListener("online", async () => {
+  await checkCore();
+  if (state.serviceReachable) toast("本机服务连接已恢复。");
+});
 window.addEventListener("focus", () => {
   if (!state.busy) loadPersonas();
 });
 
 async function bootstrap() {
   await loadPersonas();
-  const prompt = new URLSearchParams(location.search).get("prompt");
-  if (prompt) $("#chatInput").value = prompt.slice(0, 4000);
+  const params = new URLSearchParams(location.search);
+  const prompt = params.get("prompt");
+  $("#chatInput").value = prompt ? prompt.slice(0, 4000) : readInputDraft().slice(0, 4000);
+  if (prompt) {
+    persistInputDraft($("#chatInput").value);
+    params.delete("prompt");
+    const query = params.toString();
+    history.replaceState(null, "", `${location.pathname}${query ? `?${query}` : ""}`);
+  }
+  resizeComposerInput();
   updateHistoryTimestamp();
   setComposerMode("text", false);
   setContextCollapsed(compactContextQuery.matches);
   loadVoiceInputCapability();
   await ensureDeskAccess();
   await Promise.all([checkCore(), loadVoiceStatus()]);
+  if (state.ready && state.serviceReachable) await loadHistory();
 }
 
 bootstrap();

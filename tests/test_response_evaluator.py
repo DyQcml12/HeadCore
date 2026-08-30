@@ -280,6 +280,30 @@ def test_response_evaluator_rejects_overexpanded_turn_taking() -> None:
     assert "short_reply_request_ignored" in short_request.reasons
 
 
+def test_response_evaluator_does_not_turn_mood_into_a_hard_length_cap() -> None:
+    evaluator = ResponseEvaluator()
+
+    emotional = evaluator.evaluate(
+        user_input="今天真的很烦，但我想把来龙去脉说清楚。",
+        response_text=(
+            "我听着呢。你可以把事情从头说完，不用急着把情绪压成一句话；"
+            "等你说清楚，我们再一起挑最要紧的一步。"
+        ),
+        fallback_used=False,
+    )
+    task = evaluator.evaluate(
+        user_input="请给我一个完整的后端拆分方案。",
+        response_text=(
+            "可以先拆认证、会话、消息和文件四个边界，再为每个边界定义请求模型、"
+            "错误码、持久化接口与测试，最后用一条端到端用例验证跨模块行为。"
+        ),
+        fallback_used=False,
+    )
+
+    assert emotional.passed is True
+    assert task.passed is True
+
+
 def test_response_evaluator_rejects_hostile_or_humiliating_reply() -> None:
     result = ResponseEvaluator().evaluate(
         user_input="我们是什么关系？",

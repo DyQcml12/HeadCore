@@ -73,8 +73,7 @@ def check_world_awareness() -> ControlHealthItem:
             "世界工具运行时",
             "not_configured",
             "响应式世界工具已关闭；刷新控制台不会调用外部世界接口。",
-            "查看世界工具文档",
-            "/control/docs/world-model",
+            "按需在本机配置中启用",
         )
     configured = status.amap_key_configured and status.amap_legal_approved
     approved = status.amap_legal_approved
@@ -89,7 +88,5 @@ def check_world_awareness() -> ControlHealthItem:
         "世界工具运行时",
         state,
         detail,
-        "查看世界工具文档",
-        "/control/docs/world-model",
+        "状态来自受控 Provider 配置",
     )
-

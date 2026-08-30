@@ -803,6 +803,275 @@ summary:focus-visible {
   .toast { right: auto; bottom: 78px; left: 12px; }
 }
 
+/* Account workspace pass: one navigation model for identity, configuration and records. */
+.resource-jump-nav {
+  display: none;
+}
+
+/* Billing is outside this local-only project boundary, so do not expose a dead entry. */
+[data-rail-item="billing"],
+#billing {
+  display: none !important;
+}
+
+.workshop-shell {
+  width: min(calc(100% - 48px), 1480px);
+  min-height: calc(100dvh - 64px);
+  grid-template-columns: minmax(210px, 240px) minmax(0, 1fr);
+  gap: 28px;
+}
+
+.workshop-content {
+  min-width: 0;
+  width: 100%;
+}
+
+.workshop-tabs {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+}
+
+.workshop-tabs button {
+  display: flex;
+  min-width: 0;
+  min-height: 44px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 11px;
+  padding: 0 12px;
+  text-align: left;
+}
+
+.workshop-tabs button svg,
+.workshop-tabs .nav-glyph {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+}
+
+.workshop-tabs .nav-glyph {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--dash-line-strong);
+  border-radius: 4px;
+  color: var(--dash-accent);
+  font-size: 0.63rem;
+  font-weight: 800;
+}
+
+.workshop-tabs .nav-label {
+  order: 2;
+  overflow: hidden;
+  color: inherit;
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workshop-tabs button svg,
+.workshop-tabs .nav-glyph { order: 1; }
+
+.workshop-tabs .nav-tooltip {
+  display: none;
+}
+
+.sidebar-logout {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 0 12px;
+}
+
+.view-heading {
+  max-width: none;
+}
+
+.workshop-view.active {
+  animation: account-view-enter 260ms ease-out both;
+}
+
+@keyframes account-view-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.workflow-card,
+.repository-panel,
+.memory-gate,
+.config-section,
+.settings-state {
+  transition: border-color 180ms ease-out, transform 180ms ease-out, box-shadow 180ms ease-out;
+}
+
+.workflow-card:hover,
+.repository-panel:hover,
+.config-section:hover,
+.memory-gate:hover,
+.settings-state:hover {
+  border-color: color-mix(in oklab, var(--dash-line-strong) 70%, var(--dash-line));
+  transform: translateY(-2px);
+}
+
+.system-prompt-field textarea {
+  min-height: 150px;
+  max-height: 280px;
+}
+
+.account-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.9fr) auto;
+  align-items: center;
+  gap: 24px;
+}
+
+.account-summary-main {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 13px;
+}
+
+.account-summary-main > div { display: grid; min-width: 0; gap: 4px; }
+.account-summary-main strong { overflow: hidden; color: var(--dash-ink); font-size: 1rem; text-overflow: ellipsis; white-space: nowrap; }
+.account-summary-main > div > span { overflow: hidden; color: var(--dash-muted); font-size: 0.7rem; text-overflow: ellipsis; white-space: nowrap; }
+.account-summary-avatar { display: grid; width: 44px; height: 44px; flex: 0 0 44px; place-items: center; border: 1px solid var(--dash-line-strong); border-radius: 50%; color: var(--dash-accent); background: oklch(75% 0.2 145 / 0.08); font-weight: 800; }
+.account-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 0; }
+.account-meta div { display: grid; gap: 4px; }
+.account-meta dt { color: var(--dash-faint); font-size: 0.6rem; }
+.account-meta dd { margin: 0; color: var(--dash-muted); font-size: 0.68rem; }
+.account-summary > button { min-height: 38px; border: 1px solid var(--dash-line-strong); border-radius: 4px; padding: 0 12px; color: var(--dash-accent); background: transparent; font-size: 0.68rem; }
+.account-summary > button:hover { background: oklch(75% 0.2 145 / 0.08); }
+.security-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 24px; }
+.security-summary > div { display: grid; gap: 5px; }
+.security-summary > div > strong { color: var(--dash-ink); font-size: 0.86rem; }
+.security-summary > div > span { color: var(--dash-muted); font-size: 0.7rem; }
+.security-action { display: inline-flex; min-height: 38px; align-items: center; border: 1px solid var(--dash-line-strong); border-radius: 4px; padding: 0 12px; color: var(--dash-accent); font-size: 0.68rem; text-decoration: none; }
+.security-action:hover { background: oklch(75% 0.2 145 / 0.08); }
+.security-summary > p { grid-column: 1 / -1; margin: 8px 0 0; color: var(--dash-faint); font-size: 0.64rem; }
+
+.tool-switches > label {
+  position: relative;
+  padding-right: 8px;
+}
+
+.tool-switches > label > span:first-child {
+  min-width: 0;
+}
+
+.capability-badge {
+  flex: 0 0 auto;
+  border: 1px solid var(--dash-line);
+  border-radius: 4px;
+  padding: 5px 7px;
+  color: var(--dash-faint);
+  font-size: 0.59rem;
+  white-space: nowrap;
+}
+
+.capability-badge.ready {
+  border-color: color-mix(in oklab, var(--dash-accent) 65%, transparent);
+  color: var(--dash-accent);
+}
+
+.capability-note {
+  margin: 13px 0 0;
+  border-left: 2px solid var(--dash-line-strong);
+  padding-left: 10px;
+  color: var(--dash-faint);
+  font-size: 0.64rem;
+  line-height: 1.6;
+}
+
+.tool-switches input[disabled] {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.memory-toolbar {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(150px, 240px) 130px auto;
+  align-items: center;
+  gap: 9px;
+}
+
+.memory-toolbar > div {
+  display: grid;
+  gap: 3px;
+}
+
+.memory-toolbar strong { color: var(--dash-ink); font-size: 0.74rem; }
+.memory-toolbar small { color: var(--dash-faint); font-size: 0.61rem; }
+
+.memory-search input,
+.memory-toolbar select {
+  width: 100%;
+  min-height: 36px;
+  box-sizing: border-box;
+  border: 1px solid var(--dash-line);
+  border-radius: 4px;
+  padding: 0 10px;
+  color: var(--dash-ink);
+  background: oklch(8% 0.02 250 / 0.38);
+  font: inherit;
+  font-size: 0.67rem;
+}
+
+.memory-search input:focus,
+.memory-toolbar select:focus {
+  border-color: var(--dash-line-strong);
+  outline: 0;
+  box-shadow: 0 0 0 3px oklch(75% 0.2 145 / 0.1);
+}
+
+.memory-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 14px;
+  padding: 15px 0;
+  border-bottom-color: var(--dash-line);
+}
+
+.memory-item::before { top: 23px; }
+.memory-item-meta { grid-column: 1 / -1; }
+.memory-item-select {
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  color: var(--dash-muted);
+  background: transparent;
+  font-size: 0.76rem;
+  line-height: 1.7;
+  text-align: left;
+}
+
+.memory-item-select:hover { color: var(--dash-ink); }
+.memory-item.is-selected .memory-item-select { color: var(--dash-ink); }
+.memory-item-detail { grid-column: 1 / -1; margin: 0; color: var(--dash-faint); font-size: 0.62rem; }
+.memory-delete { position: static; align-self: start; }
+
+@media (max-width: 820px) {
+  .workshop-shell { width: min(calc(100% - 32px), 720px); }
+  .memory-toolbar { grid-template-columns: 1fr 1fr; }
+  .memory-toolbar > div { grid-column: 1 / -1; }
+  .account-summary { grid-template-columns: 1fr; gap: 16px; }
+  .account-summary > button { justify-self: start; }
+  .security-summary { grid-template-columns: 1fr; }
+  .security-action { justify-self: start; }
+}
+
+@media (max-width: 640px) {
+  .workshop-shell { width: calc(100% - 24px); min-height: 0; }
+  .resource-sidebar { right: 10px; bottom: 10px; left: 10px; }
+  .sidebar-profile { display: none; }
+  .workshop-tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+  .workshop-tabs::-webkit-scrollbar { display: none; }
+  .workshop-tabs button { min-width: 118px; min-height: 40px; justify-content: center; padding: 0 9px; }
+  .workshop-tabs .nav-label { font-size: 0.64rem; }
+  .memory-toolbar { grid-template-columns: 1fr; }
+  .memory-toolbar > div { grid-column: auto; }
+}
+
 /* Workshop focus: a quiet 80px icon rail and one global draft state. */
 .skip-link {
   position: fixed;
@@ -988,6 +1257,7 @@ summary:focus-visible {
 @media (max-width: 640px) {
   .global-draft-badge { top: 70px; right: 12px; min-height: 30px; padding-inline: 8px 10px; font-size: 0.6rem; }
   .workshop-shell { display: block; width: min(calc(100% - 24px), 620px); padding-top: 88px; padding-bottom: 104px; }
+  .workshop-content { padding-bottom: 88px; }
   .resource-sidebar { position: fixed; z-index: 16; right: 10px; bottom: 10px; left: 10px; top: auto; display: flex; width: auto; min-height: 64px; flex-direction: row; justify-content: center; gap: 4px; overflow: visible; border-radius: 8px; padding: 6px; background: oklch(16% 0.032 250 / 0.96); }
   .sidebar-profile { display: none; }
   .resource-sidebar > .workshop-tabs { display: flex; width: auto; gap: 4px; }
@@ -1013,4 +1283,117 @@ summary:focus-visible {
   .prompt-editor,
   .prompt-editor::before { border: 1px solid CanvasText; background: Canvas; box-shadow: none; filter: none; }
   .prompt-editor::before { display: none; }
+}
+
+/* Workshop layout pass: make the editing surface the primary object. */
+body {
+  min-width: 320px;
+  color: #edf2ef;
+  background: #0d1318;
+}
+
+.workshop-shell {
+  width: min(calc(100% - 48px), 1240px);
+  grid-template-columns: 188px minmax(0, 1fr);
+  gap: 28px;
+  padding-top: clamp(28px, 5vw, 58px);
+}
+
+.workshop-header { max-width: 1240px; margin-inline: auto; }
+.resource-sidebar { position: sticky; top: 94px; border-radius: 10px; background: #121a20; }
+.workshop-content { max-width: 920px; }
+.workshop-content::before { display: none; }
+.view-heading { max-width: 720px; margin-bottom: 28px; }
+.view-heading h2 { font-size: clamp(1.9rem, 3.5vw, 3.2rem); line-height: 1.08; }
+.workflow-stack { gap: 18px; }
+.workflow-card,
+.config-section,
+.repository-panel,
+.memory-gate { border-radius: 10px; background: #151e24; box-shadow: 0 18px 45px rgb(0 0 0 / 14%); }
+.workflow-card { padding: clamp(20px, 3vw, 30px); }
+.draft-layout { gap: clamp(26px, 5vw, 58px); }
+.persona-list-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; border-bottom: 1px solid rgb(255 255 255 / 9%); }
+.persona-list-row.active { background: rgb(189 229 179 / 8%); }
+.persona-list-row .persona-list-item { min-width: 0; border: 0; border-radius: 0; background: transparent; }
+.persona-list-actions { display: flex; align-items: center; gap: 4px; padding-inline: 6px; }
+.persona-list-action { min-height: 30px; border: 0; border-radius: 5px; padding: 0 7px; color: rgb(237 242 239 / 58%); background: transparent; font-size: 0.64rem; }
+.persona-list-action:hover { color: #d5efc9; background: rgb(213 239 201 / 10%); }
+.persona-list-action.danger:hover { color: #f0ae9c; background: rgb(240 174 156 / 10%); }
+.config-section { padding: 22px; }
+.prompt-section .prompt-editor textarea { min-height: 260px; }
+.repository-panel { gap: 24px; }
+.memory-item { padding-block: 18px; }
+
+@media (max-width: 960px) {
+  .workshop-shell { width: min(calc(100% - 32px), 760px); grid-template-columns: 1fr; }
+  .resource-sidebar { position: static; }
+  .workshop-tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .workshop-tabs button { text-align: center; }
+}
+
+@media (max-width: 640px) {
+  .workshop-shell { width: min(calc(100% - 24px), 620px); padding-top: 24px; padding-bottom: 92px; }
+  .workshop-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .view-heading h2 { font-size: 2.15rem; }
+  .config-section { padding: 18px 16px; }
+  .workflow-card { padding: 18px 16px; }
+  .persona-list-row { grid-template-columns: minmax(0, 1fr); }
+  .persona-list-actions { justify-content: flex-end; padding: 4px 6px 8px; }
+  .form-actions > * { width: 100%; }
+  .save-draft { width: 100%; }
+}
+
+/* Keep unavailable product areas out of the primary workspace navigation. */
+[data-workshop-view="models"],
+[data-workshop-view="billing"],
+[data-workshop-view="notifications"] {
+  display: none !important;
+}
+
+/* Active workspace surface (must come after legacy visual overrides above). */
+.resource-jump-nav { display: none !important; }
+[data-workshop-view="models"],
+[data-workshop-view="notifications"] { display: flex !important; }
+#billing,
+[data-rail-item="billing"] { display: none !important; }
+
+.workshop-shell {
+  width: min(calc(100% - 48px), 1480px) !important;
+  grid-template-columns: minmax(210px, 240px) minmax(0, 1fr) !important;
+  gap: 28px !important;
+}
+
+.resource-sidebar { width: auto !important; min-height: 0 !important; align-items: stretch !important; }
+.resource-sidebar > .workshop-tabs { width: auto !important; }
+.workshop-tabs button,
+.sidebar-logout { width: auto !important; min-width: 0 !important; min-height: 44px !important; display: flex !important; align-items: center; justify-content: flex-start; gap: 11px; padding: 0 12px !important; text-align: left !important; }
+.workshop-tabs .nav-label { display: block !important; order: 2; }
+.workshop-tabs button svg,
+.workshop-tabs .nav-glyph { order: 1; }
+
+.prompt-editor,
+.prompt-editor textarea { min-height: 150px !important; height: auto !important; max-height: 280px !important; }
+
+.memory-toolbar { display: grid !important; grid-template-columns: minmax(180px, 1fr) minmax(150px, 240px) 130px auto !important; }
+.memory-item { display: grid !important; grid-template-columns: minmax(0, 1fr) auto !important; gap: 8px 14px; }
+.memory-item-select { position: static !important; width: 100%; min-width: 0; border: 0; padding: 0; color: var(--dash-muted); background: transparent; text-align: left; }
+.memory-item-detail { grid-column: 1 / -1; }
+.memory-delete { position: static !important; }
+
+@media (max-width: 960px) {
+  .workshop-shell { width: min(calc(100% - 32px), 760px) !important; grid-template-columns: 1fr !important; }
+  .resource-sidebar { position: static !important; }
+  .resource-sidebar > .workshop-tabs { display: grid !important; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+@media (max-width: 640px) {
+  .workshop-shell { width: calc(100% - 24px) !important; }
+  .resource-sidebar { position: fixed !important; z-index: 16; right: 10px; bottom: 10px; left: 10px; display: flex !important; width: auto !important; }
+  .resource-sidebar > .workshop-tabs { display: flex !important; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+  .resource-sidebar > .workshop-tabs::-webkit-scrollbar { display: none; }
+  .workshop-tabs button,
+  .sidebar-logout { min-width: 118px !important; min-height: 40px !important; justify-content: center; }
+  .sidebar-logout { min-width: 40px !important; }
+  .memory-toolbar { grid-template-columns: 1fr !important; }
+  .memory-toolbar > div { grid-column: auto !important; }
 }

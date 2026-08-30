@@ -561,6 +561,39 @@ class WorldContextAssembler:
             source_ids=tuple(source.source_id for source in successful),
         )
 
+    def from_search(
+        self,
+        result: WorldAcquisitionResult,
+        *,
+        tool_intent: str = "web_search",
+    ) -> WorldContextProjection:
+        observation = result.batch.observations[0]
+        items = observation.payload.get("items", [])
+        safe_items = [item for item in items if isinstance(item, dict)] if isinstance(items, list) else []
+        lines = [_projection_header()]
+        for item in safe_items[: self._max_items]:
+            lines.append(
+                "- [搜索] "
+                + _safe_text(item.get("title"), 500)
+                + "；来源="
+                + _safe_text(item.get("source_name"), 100)
+                + "；链接="
+                + _safe_url(item.get("url"))
+            )
+            snippet = _safe_text(item.get("snippet"), 400)
+            if snippet:
+                lines.append("  " + snippet)
+        if not safe_items:
+            lines.append("- [搜索] 当前查询没有返回可用结果。不要编造实时信息。")
+        rendered = _truncate("\n".join(lines), self._max_characters)
+        return WorldContextProjection(
+            status="ready" if safe_items else "unavailable",
+            tool_intent=tool_intent,
+            rendered_text=rendered,
+            item_count=min(len(safe_items), self._max_items),
+            source_ids=(result.batch.source_id,),
+        )
+
 
 def _projection_header() -> str:
     return (
